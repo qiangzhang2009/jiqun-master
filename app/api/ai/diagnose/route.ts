@@ -40,11 +40,10 @@ export async function POST(req: NextRequest) {
 2. 佛法弘法内容如何在小红书上保持"人设温度"
 3. 如何在众多心灵成长账号中建立差异化`;
 
+  const fallback = getRuleBasedDiagnosis({ accountType, contentType, targetAudience, postsPerWeek, goal });
+
   if (!DEEPSEEK_API_KEY) {
-    return NextResponse.json({
-      error: 'DEEPSEEK_API_KEY 未配置',
-      fallback: getRuleBasedDiagnosis({ accountType, contentType, targetAudience, postsPerWeek, goal }),
-    }, { status: 200 });
+    return NextResponse.json({ result: fallback, usingFallback: true });
   }
 
   try {
@@ -83,10 +82,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     console.error('Diagnose API error:', err);
-    return NextResponse.json({
-      error: '诊断服务暂时不可用',
-      fallback: getRuleBasedDiagnosis({ accountType, contentType, targetAudience, postsPerWeek, goal }),
-    }, { status: 200 });
+    return NextResponse.json({ result: fallback, usingFallback: true });
   }
 }
 
@@ -124,7 +120,7 @@ function getRuleBasedDiagnosis(params: {
     ],
     diffAdvice: [
       '深耕一个细分领域（如「职场人的佛法修行」），避免泛泛而谈',
-      '挖掘济群法师独特的弘法理念，形成差异化内容壁垒',
+      '挖掘独特的弘法理念，形成差异化内容壁垒',
       '建立账号独特的视觉风格和语言风格，形成辨识度',
     ],
     overall,

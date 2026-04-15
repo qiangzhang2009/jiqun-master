@@ -44,10 +44,7 @@ ${text}
 - 选题扩展：每个选题要贴合当代人真实困惑（如职场内耗、情感困惑、自我怀疑等）`;
 
   if (!DEEPSEEK_API_KEY) {
-    return NextResponse.json({
-      error: 'DEEPSEEK_API_KEY 未配置',
-      fallback: getRuleBasedResult(text, mode),
-    }, { status: 200 });
+    return NextResponse.json({ result: getRuleBasedResult(text, mode) });
   }
 
   try {
@@ -79,10 +76,7 @@ ${text}
     return NextResponse.json({ result });
   } catch (err) {
     console.error('Translate API error:', err);
-    return NextResponse.json({
-      error: 'AI服务暂时不可用',
-      fallback: getRuleBasedResult(text, mode),
-    }, { status: 200 });
+    return NextResponse.json({ result: getRuleBasedResult(text, mode) });
   }
 }
 

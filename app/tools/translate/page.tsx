@@ -43,9 +43,8 @@ export default function TranslatePage() {
         body: JSON.stringify({ text: input, mode: outputMode }),
       });
 
-      if (!res.ok) throw new Error('服务暂不可用，请稍后重试');
-
       const data = await res.json();
+      if (!data.result) throw new Error('服务暂不可用，请稍后重试');
       setOutput(data.result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '未知错误';
@@ -157,7 +156,7 @@ export default function TranslatePage() {
               <div className="zen-card p-5 border-[var(--accent-red)]/30 bg-[var(--accent-red)]/5">
                 <p className="text-sm text-[var(--accent-red)]">{error}</p>
                 <p className="text-xs text-[var(--text-muted)] mt-1">
-                  AI翻译需要配置 OpenAI API Key。请在项目根目录创建 .env.local 文件，添加 <code className="bg-[var(--bg-secondary)] px-1 rounded">OPENAI_API_KEY=你的密钥</code>
+                  AI翻译需要配置 DeepSeek API Key。请在 Vercel 环境变量中添加 <code className="bg-[var(--bg-secondary)] px-1 rounded">DEEPSEEK_API_KEY</code>
                 </p>
               </div>
             )}

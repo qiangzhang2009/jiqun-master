@@ -16,87 +16,126 @@ const TITLE_TYPES: TitleType[] = [
     id: 'mystery',
     name: '悬疑式',
     example: '法师说：越想放下，越放不下……',
-    emoji: '?',
+    emoji: '🔍',
   },
   {
     id: 'pain_point',
     name: '痛点式',
     example: '为什么你总是内耗？因为你误解了这件事',
-    emoji: '!',
+    emoji: '💔',
   },
   {
     id: 'number',
     name: '数字冲击',
     example: '法师用一个字，道破了焦虑的根源',
-    emoji: '#',
+    emoji: '🔥',
   },
   {
     id: 'identity',
     name: '身份代入',
     example: '给所有觉得自己不够好的人，法师的3句话',
-    emoji: '@',
+    emoji: '💬',
   },
   {
     id: 'emotion',
     name: '情绪共鸣',
-    example: '读完法师这段话，我哭了',
-    emoji: '~',
+    example: '读完这段话，我放下了执念',
+    emoji: '✨',
   },
 ];
 
-const titleTemplates: Record<string, string[]> = {
+// Template slots: each array = options for that position
+const TEMPLATE_PARTS: Record<string, string[][]> = {
   mystery: [
-    '法师说：越想放下，越放不下……',
-    '法师一语道破：为什么越努力越焦虑？',
-    '法师：99%的人都在修「假佛学」',
-    '法师说：放下，不是放弃',
-    '法师这一句话，治好了我的精神内耗',
+    ['越想放下，越', '放不下……'],
+    ['为什么', '越努力越焦虑'],
+    ['99%的人都在', '修「假佛学」'],
+    ['不是', '风动，不是幡动……'],
+    ['这一句话，', '治好了我的精神内耗'],
   ],
   pain_point: [
-    '为什么你总是焦虑？因为你误解了这两件事',
-    '法师：你的「不配得感」，来自这里',
-    '法师开示：越想开，越想不开？',
-    '为什么你学佛多年，还是不快乐？',
-    '法师：不是世界太卷，是你太较真',
+    ['为什么你总是', '焦虑', '？因为你误解了这件事'],
+    ['你的「不配得感」，来自', '这里'],
+    ['越想开，', '越想不开', '？'],
+    ['学佛多年，', '还是不快乐', '？问题出在这里'],
+    ['不是世界太卷，是', '你太较真'],
   ],
   number: [
-    '法师用一个字，道破了焦虑的根源',
-    '法师：3句话，让你放下执念',
-    '法师：修行做好这2件事，足够了',
-    '法师：人生99%的痛苦，来自于这一个字',
-    '3个法师教我的修行方法，受用终身',
+    ['用一个字，', '道破了焦虑的根源'],
+    ['修行做好这', '2件事', '，足够了'],
+    ['人生99%的痛苦，来自', '这一个字'],
+    ['这', '3个方法', '，让修行少走10年弯路'],
+    ['只需记住', '1句话', '，从此不再内耗'],
   ],
   identity: [
-    '给所有觉得自己不够好的人，法师的3句话',
-    '给正在焦虑的你：法师说，不必焦虑',
-    '给觉得自己没有进步的人：法师的提醒',
-    '给所有想放下过去的人：法师的方法',
-    '给修行很久却没有进步的人：法师说',
+    ['给', '觉得自己不够好的人', '：3句话'],
+    ['给', '正在焦虑的你', '：不必焦虑'],
+    ['给', '想放下过去的人', '：法师的方法'],
+    ['给', '修行很久却没有进步的人', '：开示'],
+    ['给', '觉得人生没有意义的人', '：这段话点醒了我'],
   ],
   emotion: [
-    '读完法师这段话，我哭了',
-    '法师这段话，治好了我的精神内耗',
-    '看哭了：法师说，这才是真正的放下',
-    '法师这段话，点醒了迷茫的我',
-    '被法师这段话深深触动，分享给你',
+    ['读完', '这段话', '，我放下了'],
+    ['这', '段开示', '，治好了我的精神内耗'],
+    ['看哭了：', '真正的放下', '是这样的'],
+    ['这', '段话', '，点醒了迷茫的我'],
+    ['被', '这段内容', '深深触动，分享给你'],
   ],
 };
 
 function generateTitles(topic: string, types: string[]): string[] {
-  const titles: string[] = [];
-  for (const type of types) {
-    const templates = titleTemplates[type] || [];
-    for (const tpl of templates) {
-      titles.push(
-        tpl
-          .replace(/法师/g, topic.includes('佛') || topic.includes('法师') ? '' : '法师')
-          .replace(/修行/g, '修炼')
-          .replace(/焦虑/g, topic.includes('焦虑') ? '焦虑' : topic.includes('内耗') ? '内耗' : '焦虑')
-          + (topic && !tpl.includes(topic) ? `——${topic}` : '')
-      );
+  const topic2 = topic.trim();
+  const hasTopic = topic2.length > 0;
+
+  // Emotion words mapping based on topic
+  const emotionMap: Record<string, string[]> = {
+    '焦虑': ['焦虑', '内耗', '不安'],
+    '内耗': ['内耗', '精神内耗', '自我消耗'],
+    '放下': ['放下', '释怀', '解脱'],
+    '修行': ['修行', '学佛', '修心'],
+    '自我成长': ['成长', '蜕变', '觉醒'],
+  };
+
+  let aliases: string[] = [];
+  for (const [key, vals] of Object.entries(emotionMap)) {
+    if (topic2.includes(key)) {
+      aliases = vals;
+      break;
     }
   }
-  return [...new Set(titles)].slice(0, 20);
+  if (aliases.length === 0) aliases = [topic2, '内心', '自己'];
+
+  const results: string[] = [];
+
+  for (const type of types) {
+    const parts = TEMPLATE_PARTS[type];
+    if (!parts) continue;
+
+    for (let i = 0; i < parts.length; i++) {
+      const slots = parts[i];
+      let title = slots.join('___TOPIC___');
+
+      // Replace topic placeholders
+      if (hasTopic) {
+        title = title.replace(/___TOPIC___/g, aliases[i % aliases.length]);
+      } else {
+        title = title.replace(/___TOPIC___/g, '你');
+      }
+
+      // Post-process: clean up extra punctuation
+      title = title.replace(/，，。/g, '，').replace(/\.\.\./g, '……');
+      title = title.replace(/，\s*？/g, '？').replace(/，\s*！/g, '！');
+
+      // Add topic suffix if missing and topic exists
+      if (hasTopic && !title.includes(topic2) && i > 0) {
+        title = title + '——' + topic2;
+      }
+
+      results.push(title);
+    }
+  }
+
+  return [...new Set(results)].slice(0, 15);
 }
 
 function copyText(text: string, setCopied: (t: string) => void) {
@@ -119,7 +158,7 @@ export default function TitlePage() {
   };
 
   const handleGenerate = () => {
-    if (!topic.trim() || selectedTypes.length === 0) return;
+    if (selectedTypes.length === 0) return;
     const results = generateTitles(topic, selectedTypes);
     setTitles(results);
     setGenerated(true);
@@ -145,7 +184,7 @@ export default function TitlePage() {
               </div>
               <h1 className="font-serif text-2xl font-bold">钩子 · 爆款标题生成</h1>
             </div>
-            <p className="text-[var(--text-secondary)] text-sm">输入主题，生成20个备选标题，找到最适合的那个</p>
+            <p className="text-[var(--text-secondary)] text-sm">输入主题，生成15个备选标题，找到最适合的那个</p>
           </div>
         </div>
 
@@ -155,7 +194,7 @@ export default function TitlePage() {
             <label className="block text-sm font-medium mb-3">笔记主题 / 关键词</label>
             <input
               className="zen-input"
-              placeholder="例如：焦虑、内耗、放下执念、修行、情绪管理……"
+              placeholder="例如：焦虑、内耗、放下执念、修行、情绪管理……（不填则生成通用标题）"
               value={topic}
               onChange={e => setTopic(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleGenerate()}
@@ -177,7 +216,7 @@ export default function TitlePage() {
                   >
                     <p className="text-base mb-1">{type.emoji}</p>
                     <p className="text-xs font-medium">{type.name}</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5 hidden sm:block">{type.example.slice(0, 20)}…</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5 hidden sm:block">{type.example.slice(0, 16)}…</p>
                   </button>
                 );
               })}
@@ -185,17 +224,17 @@ export default function TitlePage() {
 
             <div className="mt-5 flex items-center justify-between">
               <p className="text-xs text-[var(--text-muted)]">
-                已选 {selectedTypes.length} 种类型 · 将生成 {selectedTypes.length * 5} 个标题
+                已选 {selectedTypes.length} 种类型 · 生成 {selectedTypes.length * 5} 个标题
               </p>
               <button
-                className="zen-btn zen-btn-warm"
+                className="zen-btn"
                 onClick={handleGenerate}
-                disabled={!topic.trim() || selectedTypes.length === 0}
+                disabled={selectedTypes.length === 0}
                 style={{
                   background: 'var(--accent-warm)',
                   color: 'white',
-                  opacity: (!topic.trim() || selectedTypes.length === 0) ? 0.5 : 1,
-                  cursor: (!topic.trim() || selectedTypes.length === 0) ? 'not-allowed' : 'pointer',
+                  opacity: selectedTypes.length === 0 ? 0.5 : 1,
+                  cursor: selectedTypes.length === 0 ? 'not-allowed' : 'pointer',
                 }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -217,7 +256,7 @@ export default function TitlePage() {
               <div className="grid sm:grid-cols-2 gap-3">
                 {titles.map((title, i) => {
                   const len = charCount(title);
-                  const lenOk = len >= 10 && len <= 30;
+                  const lenOk = len >= 6 && len <= 30;
                   return (
                     <div
                       key={i}
@@ -234,7 +273,7 @@ export default function TitlePage() {
                               lenOk ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]' : 'bg-[var(--accent-warm)]/10 text-[var(--accent-warm)]'
                             }`}
                           >
-                            {len}字 {lenOk ? '✓' : '偏' + (len < 10 ? '短' : '长')}
+                            {len}字 {lenOk ? '✓' : '偏' + (len < 6 ? '短' : '长')}
                           </span>
                         </div>
                       </div>
@@ -267,7 +306,7 @@ export default function TitlePage() {
                 <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
                 <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
               </svg>
-              <p className="mt-4 text-sm text-[var(--text-muted)]">输入主题，选择标题类型，即可生成</p>
+              <p className="mt-4 text-sm text-[var(--text-muted)]">选择标题类型，点击生成即可</p>
               <p className="mt-1 text-xs text-[var(--text-muted)]">选多种类型可获得更丰富的标题组合</p>
             </div>
           )}

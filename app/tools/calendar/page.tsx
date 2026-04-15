@@ -8,7 +8,8 @@ type ContentItem = {
   id: string;
   title: string;
   tags: string;
-  time: string;
+  time: string;      // "HH:mm" e.g. "21:00"
+  date: string;      // "YYYY-MM-DD" — fixed date field
   status: 'draft' | 'scheduled' | 'published';
   note?: string;
 };
@@ -23,12 +24,17 @@ const TIME_SLOTS = [
 ];
 
 const DAYS = ['日', '一', '二', '三', '四', '五', '六'];
-const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export default function CalendarPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
-  const [newItem, setNewItem] = useState<Partial<ContentItem>>({
+  const [addDate, setAddDate] = useState(todayStr());
+  const [newItem, setNewItem] = useState<Pick<ContentItem, 'title' | 'tags' | 'time' | 'status'>>({
     title: '',
     tags: '',
     time: '21:00',
@@ -36,13 +42,12 @@ export default function CalendarPage() {
   });
 
   const [items, setItems] = useState<ContentItem[]>([
-    { id: '1', title: '法师开示：越想放下，越放不下', tags: '#佛法 #放下 #修行', time: '21:00', status: 'published' },
-    { id: '2', title: '金刚经解读第一课', tags: '#金刚经 #佛法入门', time: '20:00', status: 'scheduled' },
-    { id: '3', title: '打坐入门的10个常见问题', tags: '#禅修 #打坐 #修行', time: '21:00', status: 'draft' },
+    { id: '1', title: '法师开示：越想放下，越放不下', tags: '#佛法 #放下 #修行', time: '21:00', date: todayStr(), status: 'published' },
   ]);
 
   const now = new Date();
-  const getWeekDays = (offset: number) => {
+
+  const getWeekDays = (offset: number): Date[] => {
     const start = new Date(now);
     start.setDate(now.getDate() + offset * 7);
     start.setDate(start.getDate() - start.getDay());
@@ -55,26 +60,31 @@ export default function CalendarPage() {
 
   const weekDays = getWeekDays(weekOffset);
 
-  const getItemsForDay = (date: Date) => {
-    return items.filter(item => {
-      const itemDate = new Date(item.time);
-      return itemDate.toDateString() === date.toDateString();
-    });
+  const dateToStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const getItemsForDay = (date: Date): ContentItem[] => {
+    const dateStr = dateToStr(date);
+    return items.filter(item => item.date === dateStr);
   };
 
-  const isToday = (date: Date) => date.toDateString() === now.toDateString();
+  const isToday = (date: Date) => dateToStr(date) === dateToStr(now);
 
   const handleAddItem = () => {
-    if (!newItem.title) return;
-    const item: ContentItem = {
-      id: Date.now().toString(),
-      title: newItem.title || '',
-      tags: newItem.tags || '',
-      time: newItem.time || '21:00',
-      status: (newItem.status || 'draft') as ContentItem['status'],
-    };
-    setItems(prev => [...prev, item]);
+    if (!newItem.title || !addDate) return;
+    setItems(prev => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        title: newItem.title,
+        tags: newItem.tags,
+        time: newItem.time,
+        date: addDate,
+        status: newItem.status as ContentItem['status'],
+      },
+    ]);
     setNewItem({ title: '', tags: '', time: '21:00', status: 'draft' });
+    setAddDate(todayStr());
     setShowAdd(false);
   };
 
@@ -234,6 +244,15 @@ export default function CalendarPage() {
             <h3 className="font-serif font-semibold mb-5">添加内容计划</h3>
             <div className="space-y-4">
               <div>
+                <label className="block text-sm font-medium mb-2">日期</label>
+                <input
+                  type="date"
+                  className="zen-input"
+                  value={addDate}
+                  onChange={e => setAddDate(e.target.value)}
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-2">标题</label>
                 <input
                   className="zen-input"
@@ -278,7 +297,7 @@ export default function CalendarPage() {
             </div>
             <div className="mt-5 flex gap-3 justify-end">
               <button className="zen-btn zen-btn-secondary" onClick={() => setShowAdd(false)}>取消</button>
-              <button className="zen-btn zen-btn-primary" onClick={handleAddItem} disabled={!newItem.title}>
+              <button className="zen-btn zen-btn-primary" onClick={handleAddItem} disabled={!newItem.title || !addDate}>
                 添加
               </button>
             </div>

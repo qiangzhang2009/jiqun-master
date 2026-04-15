@@ -45,6 +45,7 @@ export default function DiagnosePage() {
     if (!accountType || !contentType || !targetAudience) return;
     setLoading(true);
     setError('');
+    setResult(null);
 
     try {
       const res = await fetch('/api/ai/diagnose', {
@@ -53,8 +54,8 @@ export default function DiagnosePage() {
         body: JSON.stringify({ accountType, contentType, targetAudience, postsPerWeek, goal }),
       });
 
-      if (!res.ok) throw new Error('诊断服务暂不可用');
       const data = await res.json();
+      if (!res.ok || !data.result) throw new Error(data.error || '诊断服务暂不可用');
       setResult(data.result);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '未知错误';
