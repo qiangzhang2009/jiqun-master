@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
-import { prohibitedWords, categories } from '@/lib/rules/prohibited-words';
+import { categories } from '@/lib/rules/prohibited-words';
 
 type CheckResult = {
   word: string;
@@ -37,7 +37,7 @@ function checkText(text: string): CheckResult[] {
   return results.sort((a, b) => a.position - b.position);
 }
 
-function getScore(results: CheckResult[], textLen: number): { score: number; level: 'safe' | 'warning' | 'danger' } {
+function getScore(results: CheckResult[]): { score: number; level: 'safe' | 'warning' | 'danger' } {
   if (results.length === 0) return { score: 100, level: 'safe' };
   const penalty = results.reduce((acc, r) => acc + (r.type === 'prohibited' ? 8 : 4), 0);
   const score = Math.max(0, 100 - penalty);
@@ -74,19 +74,75 @@ function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text);
 }
 
+type HistoryEntry = {
+  id: string;
+  input: string;
+  resultCount: number;
+  score: number;
+  level: 'safe' | 'warning' | 'danger';
+  savedAt: string;
+}
+
 export default function CheckPage() {
   const [input, setInput] = useState('');
   const [results, setResults] = useState<CheckResult[]>([]);
   const [checked, setChecked] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // 恢复上次草稿
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('zenjing_check_draft');
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft.input) {
+          setInput(draft.input);
+          setLastSaved(draft.savedAt ? new Date(draft.savedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : null);
+        }
+      }
+      const histRaw = localStorage.getItem('zenjing_check_history');
+      if (histRaw) setHistory(JSON.parse(histRaw));
+    } catch (_e) { /* ignore */ }
+  }, []);
+
+  // 自动保存草稿
+  useEffect(() => {
+    if (!input.trim()) return;
+    const timer = setTimeout(() => {
+      const draft = { input, savedAt: new Date().toISOString() };
+      localStorage.setItem('zenjing_check_draft', JSON.stringify(draft));
+      setLastSaved(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [input]);
 
   const handleCheck = useCallback(() => {
     const res = checkText(input);
+    const { score, level } = getScore(res);
     setResults(res);
     setChecked(true);
-  }, [input]);
 
-  const scoreData = getScore(results, input.length);
+    // 保存历史
+    const entry: HistoryEntry = {
+      id: `check_${Date.now()}`,
+      input,
+      resultCount: res.length,
+      score,
+      level,
+      savedAt: new Date().toISOString(),
+    };
+    const next = [entry, ...history].slice(0, 30);
+    setHistory(next);
+    localStorage.setItem('zenjing_check_history', JSON.stringify(next));
+
+    // 清除草稿
+    localStorage.removeItem('zenjing_check_draft');
+    setLastSaved(null);
+  }, [input, history]);
+
+  const scoreData = getScore(results);
 
   const scoreClass = scoreData.level === 'danger' ? 'score-low' : scoreData.level === 'warning' ? 'score-mid' : 'score-high';
   const scoreLabel = scoreData.level === 'danger' ? '高风险' : scoreData.level === 'warning' ? '需注意' : '合规';
@@ -96,18 +152,6 @@ export default function CheckPage() {
     acc[r.category].push(r);
     return acc;
   }, {} as Record<string, CheckResult[]>);
-
-  const handleCopy = (text: string) => {
-    copyToClipboard(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const cleanedText = input
-    .split(new RegExp(results.map(r => r.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi'))
-    .join('')
-    .replace(/\s+/g, ' ')
-    .trim();
 
   return (
     <>
@@ -132,9 +176,24 @@ export default function CheckPage() {
           <div className="grid lg:grid-cols-2 gap-8">
             {/* Left: Input */}
             <div>
-              <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-                笔记正文 / 标题
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-[var(--text-primary)]">
+                  笔记正文 / 标题
+                </label>
+                <div className="flex items-center gap-3">
+                  {lastSaved && (
+                    <span className="text-xs text-[var(--text-muted)]">草稿已保存 {lastSaved}</span>
+                  )}
+                  {history.length > 0 && (
+                    <button
+                      className="text-xs text-[var(--accent-primary)] hover:underline"
+                      onClick={() => setShowHistory(v => !v)}
+                    >
+                      历史 {history.length}
+                    </button>
+                  )}
+                </div>
+              </div>
               <textarea
                 className="zen-textarea h-64"
                 placeholder="粘贴笔记内容到这里，支持标题、正文、标签……"
@@ -154,6 +213,40 @@ export default function CheckPage() {
                   检测合规
                 </button>
               </div>
+
+              {/* History */}
+              {showHistory && (
+                <div className="mt-4 p-4 rounded-[var(--radius-sm)] border border-[var(--border-light)] bg-[var(--bg-secondary)]/50 animate-fade-in">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium text-[var(--text-muted)]">检测历史</p>
+                    <button className="text-xs text-[var(--text-muted)] hover:text-[var(--accent-red)]" onClick={() => { setHistory([]); localStorage.removeItem('zenjing_check_history'); }}>清空</button>
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {history.map(entry => (
+                      <button
+                        key={entry.id}
+                        className="w-full text-left p-2 rounded bg-[var(--bg-card)] hover:bg-[var(--border)] transition-colors"
+                        onClick={() => { setInput(entry.input); setChecked(false); setShowHistory(false); }}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-xs font-medium ${
+                            entry.level === 'danger' ? 'text-[var(--accent-red)]' :
+                            entry.level === 'warning' ? 'text-[var(--accent-warm)]' :
+                            'text-[var(--accent-primary)]'
+                          }`}>
+                            {entry.score}分 · {entry.level === 'danger' ? '高风险' : entry.level === 'warning' ? '需注意' : '合规'}
+                            {entry.resultCount > 0 ? ` · ${entry.resultCount}个问题` : ''}
+                          </span>
+                          <span className="text-xs text-[var(--text-muted)]">
+                            {new Date(entry.savedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] truncate">{entry.input.slice(0, 40)}…</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Quick insert */}
               <div className="mt-6 pt-6 border-t border-[var(--border-light)]">

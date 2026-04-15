@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 
@@ -22,6 +22,26 @@ function copyText(text: string) {
   navigator.clipboard.writeText(text);
 }
 
+type HistoryEntry = {
+  id: string;
+  input: string;
+  mode: OutputMode;
+  output: string;
+  savedAt: string;
+}
+
+// --- localStorage 工具（内联） ---
+function lsGet<T>(key: string, fallback: T): T {
+  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) as T : fallback; } catch { return fallback; }
+}
+function lsSet(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+}
+function lsRm(key: string) { try { localStorage.removeItem(key); } catch { /* ignore */ } }
+
+const LS_HISTORY = 'zenjing_translate_history';
+const LS_DRAFT = 'zenjing_translate_draft';
+
 export default function TranslatePage() {
   const [input, setInput] = useState('');
   const [outputMode, setOutputMode] = useState<OutputMode>('light');
@@ -29,6 +49,49 @@ export default function TranslatePage() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+
+  // 历史记录持久化
+  const [history, setHistory] = useState<HistoryEntry[]>(() => lsGet<HistoryEntry[]>(LS_HISTORY, []));
+
+  // 自动保存草稿（输入变化时）
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!input.trim()) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      localStorage.setItem('zenjing_translate_draft', JSON.stringify({
+        input,
+        mode: outputMode,
+        savedAt: new Date().toISOString(),
+      }));
+      setLastSaved(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+    }, 1000);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [input, outputMode]);
+
+  // 恢复草稿
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('zenjing_translate_draft');
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft.input && draft.input !== input) {
+          setInput(draft.input);
+          setOutputMode(draft.mode || 'light');
+        }
+        if (draft.savedAt) {
+          setLastSaved(new Date(draft.savedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleGenerate = async () => {
     if (!input.trim()) return;
@@ -46,12 +109,44 @@ export default function TranslatePage() {
       const data = await res.json();
       if (!data.result) throw new Error('服务暂不可用，请稍后重试');
       setOutput(data.result);
+
+      // 保存到历史记录
+      const entry: HistoryEntry = {
+        id: `t_${Date.now()}`,
+        input,
+        mode: outputMode,
+        output: data.result,
+        savedAt: new Date().toISOString(),
+      };
+      setHistory(prev => {
+        const next = [entry, ...prev].slice(0, 50);
+        lsSet(LS_HISTORY, next);
+        return next;
+      });
+
+      // 清除草稿
+      lsRm(LS_DRAFT);
+      setLastSaved(null);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '未知错误';
       setError(message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRestore = (entry: HistoryEntry) => {
+    setInput(entry.input);
+    setOutputMode(entry.mode);
+    setOutput(entry.output);
+    setShowHistory(false);
+  };
+
+  const handleClearDraft = () => {
+    lsRm(LS_DRAFT);
+    setInput('');
+    setOutput('');
+    setLastSaved(null);
   };
 
   return (
@@ -78,7 +173,28 @@ export default function TranslatePage() {
           <div className="grid gap-6">
             {/* Input */}
             <div className="zen-card p-6">
-              <label className="block text-sm font-medium mb-3">法师讲座原文 / 笔记内容</label>
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium">法师讲座原文 / 笔记内容</label>
+                <div className="flex items-center gap-3">
+                  {lastSaved && (
+                    <span className="text-xs text-[var(--text-muted)]">草稿已保存 {lastSaved}</span>
+                  )}
+                  {input && (
+                    <button
+                      className="text-xs text-[var(--text-muted)] hover:text-[var(--accent-red)] transition-colors"
+                      onClick={handleClearDraft}
+                    >
+                      清除草稿
+                    </button>
+                  )}
+                  <button
+                    className="text-xs text-[var(--accent-warm)] hover:underline"
+                    onClick={() => setShowHistory(v => !v)}
+                  >
+                    历史记录 {history.length > 0 ? `(${history.length})` : ''}
+                  </button>
+                </div>
+              </div>
               <textarea
                 className="zen-textarea h-48"
                 placeholder="粘贴法师讲座原文、读书会记录、笔记内容……\n\n系统会自动保留佛法核心观点，将学术表达转化为小红书风格。"
@@ -135,6 +251,42 @@ export default function TranslatePage() {
               </div>
             </div>
 
+            {/* History panel */}
+            {showHistory && history.length > 0 && (
+              <div className="zen-card p-5 animate-fade-in">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">历史记录</p>
+                  <button
+                    className="text-xs text-[var(--text-muted)] hover:text-[var(--accent-red)]"
+                    onClick={() => { setHistory([]); lsSet(LS_HISTORY, []); }}
+                  >
+                    清空
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {history.map(entry => (
+                    <button
+                      key={entry.id}
+                      className="w-full text-left p-3 rounded-[var(--radius-sm)] bg-[var(--bg-secondary)] hover:bg-[var(--border)] transition-colors"
+                      onClick={() => handleRestore(entry)}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-[var(--accent-warm)]">
+                          {OUTPUT_MODES.find(m => m.id === entry.mode)?.name}
+                        </span>
+                        <span className="text-xs text-[var(--text-muted)]">
+                          {new Date(entry.savedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)] truncate">
+                        {entry.input.slice(0, 60)}{entry.input.length > 60 ? '…' : ''}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Example texts */}
             <div className="zen-card p-5">
               <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-3">快速测试示例</p>
@@ -151,7 +303,7 @@ export default function TranslatePage() {
               </div>
             </div>
 
-            {/* Output */}
+            {/* Error */}
             {error && (
               <div className="zen-card p-5 border-[var(--accent-red)]/30 bg-[var(--accent-red)]/5">
                 <p className="text-sm text-[var(--accent-red)]">{error}</p>
@@ -161,6 +313,7 @@ export default function TranslatePage() {
               </div>
             )}
 
+            {/* Output */}
             {output && (
               <div className="zen-card p-6 animate-fade-in">
                 <div className="flex items-center justify-between mb-4">

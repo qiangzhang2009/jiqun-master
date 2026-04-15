@@ -3,16 +3,9 @@
 import { useState } from 'react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
+import type { StoredContentItem } from '@/lib/storage';
 
-type ContentItem = {
-  id: string;
-  title: string;
-  tags: string;
-  time: string;      // "HH:mm" e.g. "21:00"
-  date: string;      // "YYYY-MM-DD" — fixed date field
-  status: 'draft' | 'scheduled' | 'published';
-  note?: string;
-};
+type ContentItem = StoredContentItem;
 
 const TIME_SLOTS = [
   { time: '07:00', label: '早7点', note: '晨间活跃，职场/知识类内容效果好' },
@@ -30,6 +23,36 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// --- localStorage 工具（内联，避免模块解析问题） ---
+function lsGet<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return JSON.parse(raw) as T;
+  } catch { return fallback; }
+}
+
+function lsSet(key: string, value: unknown): void {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+}
+
+const LS_CALENDAR = 'zenjing_calendar_items';
+const DEFAULT_ITEMS: ContentItem[] = [
+  { id: 'demo_1', title: '法师开示：越想放下，越放不下', tags: '#佛法 #放下 #修行', time: '21:00', date: todayStr(), status: 'published', createdAt: new Date().toISOString() },
+];
+
+function useCalendarItems() {
+  const [items, setItemsState] = useState<ContentItem[]>(() => lsGet<ContentItem[]>(LS_CALENDAR, DEFAULT_ITEMS));
+  const setItems = (updater: ContentItem[] | ((prev: ContentItem[]) => ContentItem[])) => {
+    setItemsState(prev => {
+      const next = typeof updater === 'function' ? (updater as (p: ContentItem[]) => ContentItem[])(prev) : updater;
+      lsSet(LS_CALENDAR, next);
+      return next;
+    });
+  };
+  return [items, setItems] as const;
+}
+
 export default function CalendarPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
@@ -41,9 +64,7 @@ export default function CalendarPage() {
     status: 'draft',
   });
 
-  const [items, setItems] = useState<ContentItem[]>([
-    { id: '1', title: '法师开示：越想放下，越放不下', tags: '#佛法 #放下 #修行', time: '21:00', date: todayStr(), status: 'published' },
-  ]);
+  const [items, setItems] = useCalendarItems();
 
   const now = new Date();
 
@@ -72,17 +93,16 @@ export default function CalendarPage() {
 
   const handleAddItem = () => {
     if (!newItem.title || !addDate) return;
-    setItems(prev => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        title: newItem.title,
-        tags: newItem.tags,
-        time: newItem.time,
-        date: addDate,
-        status: newItem.status as ContentItem['status'],
-      },
-    ]);
+    const newEntry: ContentItem = {
+      id: `cal_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      title: newItem.title,
+      tags: newItem.tags,
+      time: newItem.time,
+      date: addDate,
+      status: newItem.status as ContentItem['status'],
+      createdAt: new Date().toISOString(),
+    };
+    setItems(prev => [...prev, newEntry]);
     setNewItem({ title: '', tags: '', time: '21:00', status: 'draft' });
     setAddDate(todayStr());
     setShowAdd(false);
@@ -94,6 +114,11 @@ export default function CalendarPage() {
 
   const weekStart = weekDays[0];
   const weekEnd = weekDays[6];
+
+  // 统计
+  const publishedCount = items.filter(i => i.status === 'published').length;
+  const scheduledCount = items.filter(i => i.status === 'scheduled').length;
+  const draftCount = items.filter(i => i.status === 'draft').length;
 
   return (
     <>
@@ -114,7 +139,7 @@ export default function CalendarPage() {
                   </div>
                   <h1 className="font-serif text-2xl font-bold">时序 · 发布日历</h1>
                 </div>
-                <p className="text-[var(--text-secondary)] text-sm">规划发布节奏，把握最佳时间窗口</p>
+                <p className="text-[var(--text-secondary)] text-sm">规划发布节奏，把握最佳时间窗口 · 数据自动保存在本地</p>
               </div>
               <button className="zen-btn zen-btn-primary" onClick={() => setShowAdd(true)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -128,6 +153,23 @@ export default function CalendarPage() {
         </div>
 
         <div className="max-w-5xl mx-auto px-6 py-10">
+          {/* Stats bar */}
+          <div className="flex items-center gap-6 mb-6 p-4 rounded-[var(--radius-sm)] bg-[var(--bg-secondary)]">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[var(--accent-primary)]"/>
+              <span className="text-xs text-[var(--text-secondary)]">已发布 <strong className="text-[var(--text-primary)]">{publishedCount}</strong></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[var(--accent-warm)]"/>
+              <span className="text-xs text-[var(--text-secondary)]">待发布 <strong className="text-[var(--text-primary)]">{scheduledCount}</strong></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[var(--border)]"/>
+              <span className="text-xs text-[var(--text-secondary)]">草稿 <strong className="text-[var(--text-primary)]">{draftCount}</strong></span>
+            </div>
+            <span className="ml-auto text-xs text-[var(--text-muted)]">共 {items.length} 条内容</span>
+          </div>
+
           {/* Week navigation */}
           <div className="flex items-center justify-between mb-6">
             <button
@@ -187,21 +229,28 @@ export default function CalendarPage() {
                     {dayItems.length === 0 && (
                       <p className="text-xs text-[var(--text-muted)]">-</p>
                     )}
-                    {dayItems.map(item => (
-                      <div key={item.id} className="text-xs p-1.5 rounded bg-[var(--bg-secondary)] group relative">
-                        <p className="font-medium truncate pr-4">{item.title}</p>
-                        <p className="text-[var(--text-muted)] text-[10px]">{item.time}</p>
-                        <button
-                          className="absolute top-1 right-1 text-[var(--text-muted)] hover:text-[var(--accent-red)] opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => handleDelete(item.id)}
-                        >
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                            <line x1="18" y1="6" x2="6" y2="18"/>
-                            <line x1="6" y1="6" x2="18" y2="18"/>
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
+                    {dayItems.map(item => {
+                      const statusColor = item.status === 'published'
+                        ? 'var(--accent-primary)'
+                        : item.status === 'scheduled'
+                        ? 'var(--accent-warm)'
+                        : 'var(--border)';
+                      return (
+                        <div key={item.id} className="text-xs p-1.5 rounded bg-[var(--bg-secondary)] group relative" style={{ borderLeft: `2px solid ${statusColor}` }}>
+                          <p className="font-medium truncate pr-4">{item.title}</p>
+                          <p className="text-[var(--text-muted)] text-[10px]">{item.time}</p>
+                          <button
+                            className="absolute top-1 right-1 text-[var(--text-muted)] hover:text-[var(--accent-red)] opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleDelete(item.id)}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                              <line x1="18" y1="6" x2="6" y2="18"/>
+                              <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );

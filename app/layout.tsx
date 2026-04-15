@@ -2,8 +2,49 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "禅镜 — 小红书运营工具",
-  description: "专为佛学/心灵成长类创作者设计的小红书运营工具，让弘法之道，行于指尖。",
+  metadataBase: new URL('https://zenjing.vercel.app'),
+  title: {
+    default: '禅镜 — 小红书运营工具',
+    template: '%s | 禅镜',
+  },
+  description: '专为佛学、心灵成长类创作者设计的小红书运营工具。让弘法之道，行于指尖。一站式解决标题、标签、翻译、合规检测、封面图、发布日历、账号诊断。',
+  keywords: [
+    '小红书运营工具',
+    '佛学内容创作',
+    '心灵成长',
+    '小红书标题生成',
+    '违禁词检测',
+    '小红书标签',
+    '佛法自媒体',
+    '禅修',
+    '正念',
+  ],
+  authors: [{ name: '禅镜' }],
+  creator: '禅镜',
+  openGraph: {
+    type: 'website',
+    locale: 'zh_CN',
+    url: 'https://zenjing.vercel.app',
+    siteName: '禅镜',
+    title: '禅镜 — 小红书运营工具',
+    description: '专为佛学、心灵成长类创作者设计的小红书运营工具，让弘法之道，行于指尖。',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '禅镜 — 小红书运营工具',
+    description: '专为佛学、心灵成长类创作者设计的小红书运营工具',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
 };
 
 export default function RootLayout({
