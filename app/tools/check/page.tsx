@@ -232,9 +232,9 @@ export default function CheckPage() {
                               <div key={i} className="flex items-start gap-2 py-1.5 border-b border-[var(--border-light)] last:border-0">
                                 <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${r.type === 'prohibited' ? 'bg-[var(--accent-red)]' : 'bg-[var(--accent-warm)]'}`}/>
                                 <div className="flex-1 min-w-0">
-                                  <span className="text-sm text-[var(--accent-red)] font-medium mr-2">"{r.word}"</span>
+                                  <span className="text-sm text-[var(--accent-red)] font-medium mr-2">&quot;{r.word}&quot;</span>
                                   {r.replacement && (
-                                    <span className="text-xs text-[var(--text-muted)]">→ 建议改为 "{r.replacement}"</span>
+                                    <span className="text-xs text-[var(--text-muted)]">→ 建议改为 &quot;{r.replacement}&quot;</span>
                                   )}
                                 </div>
                               </div>

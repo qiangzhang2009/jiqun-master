@@ -30,24 +30,6 @@
   --transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
 }
 
-@theme inline {
-  --color-bg-primary: var(--bg-primary);
-  --color-bg-secondary: var(--bg-secondary);
-  --color-bg-dark: var(--bg-dark);
-  --color-bg-card: var(--bg-card);
-  --color-text-primary: var(--text-primary);
-  --color-text-secondary: var(--text-secondary);
-  --color-text-muted: var(--text-muted);
-  --color-accent-primary: var(--accent-primary);
-  --color-accent-warm: var(--accent-warm);
-  --color-accent-light: var(--accent-light);
-  --color-accent-red: var(--accent-red);
-  --color-border: var(--border);
-  --color-border-light: var(--border-light);
-  --font-serif: 'Noto Serif SC', 'DM Serif Display', serif;
-  --font-sans: 'Noto Sans SC', 'DM Sans', system-ui, sans-serif;
-}
-
 *, *::before, *::after {
   box-sizing: border-box;
 }
