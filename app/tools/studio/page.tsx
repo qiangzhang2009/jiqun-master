@@ -39,6 +39,7 @@ function TranscriptStudio() {
   const [xhsScraping, setXhsScraping] = useState(false);   // 抓取中
   const [xhsError, setXhsError] = useState('');            // 抓取错误
   const [xhsSuccess, setXhsSuccess] = useState('');       // 抓取成功提示
+  const [finalError, setFinalError] = useState('');       // 终稿生成错误
 
   // ── 步骤导航 ──
   const [currentStep, setCurrentStep] = useState<Step>('collect');
@@ -202,6 +203,8 @@ function TranscriptStudio() {
       if (data.titles && Array.isArray(data.titles)) {
         setTitles(data.titles);
         if (data.titles[0]) setSelectedTitle(data.titles[0]);
+        // 自动前进到下一步
+        setTimeout(() => goToStep('tags'), 100);
       }
     } catch { /* ignore */ } finally {
       setGeneratingTitles(false);
@@ -217,6 +220,8 @@ function TranscriptStudio() {
       const res = await fetch('/api/ai/tags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
       const data = await res.json();
       if (data.tags && Array.isArray(data.tags)) setTags(data.tags);
+      // 自动前进到封面图
+      if (data.tags?.length > 0) setTimeout(() => goToStep('poster'), 100);
     } catch { /* ignore */ } finally {
       setGeneratingTags(false);
     }
@@ -297,7 +302,7 @@ function TranscriptStudio() {
       });
       const data = await res.json();
       if (data.error) {
-        setXhsError(data.error); // 复用xhsError显示
+        setFinalError(data.error);
         return;
       }
       if (data.result) {
@@ -306,7 +311,7 @@ function TranscriptStudio() {
         if (nextIdx < STEP_ORDER.length) goToStep(STEP_ORDER[nextIdx]);
       }
     } catch {
-      setXhsError('生成失败，请稍后重试');
+      setFinalError('生成失败，请稍后重试');
     } finally {
       setFinalLoading(false);
     }
@@ -594,24 +599,36 @@ function TranscriptStudio() {
           {/* ── 步骤3：爆款标题 ── */}
           {currentStep === 'titles' && (
             <div className="animate-fade-in space-y-6">
+              <div className="flex items-center gap-3">
+                <button className="zen-btn zen-btn-ghost text-xs" onClick={() => goToStep('translate')}>
+                  ← 上一步
+                </button>
+              </div>
+
               {translatedText && (
                 <div className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-secondary)] border border-[var(--border-light)]">
                   <p className="text-xs text-[var(--text-muted)] mb-1">翻译结果摘要</p>
                   <p className="text-sm text-[var(--text-secondary)] line-clamp-2">{translatedText}</p>
-                  <button className="text-xs text-[var(--accent-primary)] mt-1 hover:underline" onClick={() => goToStep('translate')}>返回修改</button>
                 </div>
               )}
 
               <div className="zen-card p-6">
-                <h2 className="font-serif text-lg font-semibold mb-4">爆款标题生成</h2>
+                <h2 className="font-serif text-lg font-semibold mb-2">爆款标题生成</h2>
                 <p className="text-sm text-[var(--text-secondary)] mb-5">基于内容生成15个备选标题，包含悬疑式、痛点式、数字冲击、身份代入、情绪共鸣五种类型</p>
                 <button
                   className="zen-btn zen-btn-primary w-full"
                   onClick={handleGenerateTitles}
                   disabled={generatingTitles || (!sourceText.trim() && !translatedText.trim())}
+                  style={{ opacity: (generatingTitles || (!sourceText.trim() && !translatedText.trim())) ? 0.6 : 1 }}
                 >
-                  {generatingTitles ? '生成中…' : '🎯 生成15个标题'}
+                  {generatingTitles ? (
+                    <><svg className="animate-spin-slow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8"/></svg>生成中…</>
+                  ) : '🎯 生成15个标题'}
                 </button>
+
+                {(!sourceText.trim() && !translatedText.trim()) && (
+                  <p className="text-xs text-[var(--text-muted)] mt-3 text-center">请先在步骤1填写素材，或在步骤2生成翻译结果</p>
+                )}
               </div>
 
               {titles.length > 0 && (
@@ -636,16 +653,14 @@ function TranscriptStudio() {
                       </button>
                     ))}
                   </div>
-                  {selectedTitle && (
-                    <div className="mt-5 flex items-center gap-3">
-                      <button className="zen-btn zen-btn-primary" onClick={() => goToStep('tags')}>
-                        生成标签 →
-                      </button>
-                      <button className="zen-btn zen-btn-ghost text-xs" onClick={() => { setTitles([]); setSelectedTitle(''); }}>
-                        重新生成
-                      </button>
-                    </div>
-                  )}
+                  <div className="mt-5 flex items-center gap-3">
+                    <button className="zen-btn zen-btn-primary" onClick={() => goToStep('tags')} disabled={!selectedTitle}>
+                      生成标签 →
+                    </button>
+                    <button className="zen-btn zen-btn-ghost text-xs" onClick={() => { setTitles([]); setSelectedTitle(''); }}>
+                      重新生成
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -654,17 +669,28 @@ function TranscriptStudio() {
           {/* ── 步骤4：智能标签 ── */}
           {currentStep === 'tags' && (
             <div className="animate-fade-in space-y-6">
+              <div className="flex items-center gap-3">
+                <button className="zen-btn zen-btn-ghost text-xs" onClick={() => goToStep('titles')}>
+                  ← 上一步
+                </button>
+              </div>
+
               <div className="zen-card p-6">
-                <h2 className="font-serif text-lg font-semibold mb-4">智能标签推荐</h2>
+                <h2 className="font-serif text-lg font-semibold mb-2">智能标签推荐</h2>
                 <p className="text-sm text-[var(--text-secondary)] mb-5">基于标题和内容，AI 推荐核心标签 + 长尾标签组合</p>
                 <button
                   className="zen-btn zen-btn-primary w-full"
                   onClick={handleGenerateTags}
-                  disabled={generatingTags || !selectedTitle}
-                  style={{ background: 'var(--accent-primary)', opacity: (generatingTags || !selectedTitle) ? 0.6 : 1 }}
+                  disabled={generatingTags || (!selectedTitle && !translatedText && !sourceText)}
+                  style={{ opacity: (generatingTags || (!selectedTitle && !translatedText && !sourceText)) ? 0.6 : 1 }}
                 >
-                  {generatingTags ? '分析中…' : '🏷️ 生成标签组合'}
+                  {generatingTags ? (
+                    <><svg className="animate-spin-slow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8"/></svg>分析中…</>
+                  ) : '🏷️ 生成标签组合'}
                 </button>
+                {(!selectedTitle && !translatedText && !sourceText) && (
+                  <p className="text-xs text-[var(--text-muted)] mt-3 text-center">请先完成素材采集和翻译</p>
+                )}
 
                 {tags.length > 0 && (
                   <div className="mt-6">
@@ -682,15 +708,7 @@ function TranscriptStudio() {
                 )}
               </div>
 
-              {tags.length > 0 && (
-                <div className="flex items-center gap-3">
-                  <button className="zen-btn zen-btn-primary" onClick={() => goToStep('poster')}>
-                    生成封面图 →
-                  </button>
-                </div>
-              )}
-
-              {/* 手动推荐标签 */}
+              {/* 常用标签快速添加 */}
               <div className="zen-card p-5">
                 <p className="text-xs font-medium text-[var(--text-muted)] mb-3">常用标签快速添加</p>
                 <div className="flex flex-wrap gap-2">
@@ -707,14 +725,29 @@ function TranscriptStudio() {
                   ))}
                 </div>
               </div>
+
+              <div className="flex items-center gap-3">
+                <button className="zen-btn zen-btn-primary" onClick={() => goToStep('poster')}>
+                  生成封面图 →
+                </button>
+                <button className="zen-btn zen-btn-secondary" onClick={() => goToStep('check')}>
+                  跳过封面图 →
+                </button>
+              </div>
             </div>
           )}
 
           {/* ── 步骤5：封面图 ── */}
           {currentStep === 'poster' && (
-            <div className="animate-fade-in">
+            <div className="animate-fade-in space-y-6">
+              <div className="flex items-center gap-3">
+                <button className="zen-btn zen-btn-ghost text-xs" onClick={() => goToStep('tags')}>
+                  ← 上一步
+                </button>
+              </div>
+
               <div className="zen-card p-6">
-                <h2 className="font-serif text-lg font-semibold mb-4">封面金句</h2>
+                <h2 className="font-serif text-lg font-semibold mb-2">封面金句</h2>
                 <p className="text-sm text-[var(--text-secondary)] mb-3">从选中的标题或翻译内容中提取，或手动输入封面金句</p>
                 <textarea
                   className="zen-textarea h-24"
@@ -722,7 +755,7 @@ function TranscriptStudio() {
                   value={posterQuote || selectedTitle}
                   onChange={e => setPosterQuote(e.target.value)}
                 />
-                <div className="mt-4 flex items-center gap-3">
+                <div className="mt-4 flex items-center gap-3 flex-wrap">
                   <a
                     href={`/tools/poster`}
                     target="_blank"
@@ -731,19 +764,20 @@ function TranscriptStudio() {
                   >
                     🎨 前往墨境生成封面图
                   </a>
-                  {posterQuote && (
-                    <button className="zen-btn zen-btn-ghost text-xs" onClick={() => { navigator.clipboard.writeText(posterQuote || selectedTitle); }}>
+                  {(posterQuote || selectedTitle) && (
+                    <button className="zen-btn zen-btn-ghost text-xs" onClick={() => navigator.clipboard.writeText(posterQuote || selectedTitle)}>
                       复制金句
                     </button>
                   )}
                 </div>
               </div>
-              <div className="mt-4 flex items-center gap-3">
-                <button className="zen-btn zen-btn-secondary" onClick={() => goToStep('tags')}>
-                  ← 返回标签
-                </button>
+
+              <div className="flex items-center gap-3">
                 <button className="zen-btn zen-btn-primary" onClick={() => goToStep('check')}>
-                  最后合规检测 →
+                  合规检测 →
+                </button>
+                <button className="zen-btn zen-btn-secondary" onClick={() => goToStep('check')}>
+                  跳过封面图
                 </button>
               </div>
             </div>
@@ -752,25 +786,43 @@ function TranscriptStudio() {
           {/* ── 步骤6：合规检测 ── */}
           {currentStep === 'check' && (
             <div className="animate-fade-in space-y-6">
+              <div className="flex items-center gap-3">
+                <button className="zen-btn zen-btn-ghost text-xs" onClick={() => goToStep('poster')}>
+                  ← 上一步
+                </button>
+              </div>
+
               <div className="zen-card p-6">
-                <h2 className="font-serif text-lg font-semibold mb-4">合规检测</h2>
+                <h2 className="font-serif text-lg font-semibold mb-2">合规检测</h2>
                 <p className="text-sm text-[var(--text-secondary)] mb-4">检测标题和正文中的违禁词，降低限流风险</p>
                 <div className="mb-4">
-                  <label className="block text-xs text-[var(--text-muted)] mb-2">待检测文本（将自动填入标题）</label>
+                  <label className="block text-xs text-[var(--text-muted)] mb-2">待检测文本</label>
                   <textarea
                     className="zen-textarea h-32"
                     placeholder="将标题和正文粘贴至此进行检测……"
-                    value={checkText || selectedTitle + (translatedText ? '\n\n' + translatedText.slice(0, 300) : '')}
+                    value={checkText || (selectedTitle ? selectedTitle + (translatedText ? '\n\n' + translatedText.slice(0, 300) : '') : translatedText ? translatedText.slice(0, 300) : '')}
                     onChange={e => setCheckText(e.target.value)}
                   />
                 </div>
-                <button
-                  className="zen-btn zen-btn-primary"
-                  onClick={handleCheck}
-                  disabled={checkLoading || (!checkText.trim() && !selectedTitle)}
-                >
-                  {checkLoading ? '检测中…' : '🛡️ 开始检测'}
-                </button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    className="zen-btn zen-btn-primary"
+                    onClick={handleCheck}
+                    disabled={checkLoading || (!checkText.trim() && !selectedTitle && !translatedText)}
+                  >
+                    {checkLoading ? '检测中…' : '🛡️ 开始检测'}
+                  </button>
+                  <button
+                    className="zen-btn zen-btn-secondary"
+                    onClick={handleGenerateFinal}
+                    disabled={finalLoading || (!selectedTitle && !translatedText)}
+                  >
+                    {finalLoading ? '生成中…' : '✨ 直接生成终稿'}
+                  </button>
+                  {finalError && (
+                    <p className="text-xs text-[var(--accent-warm)]">{finalError}</p>
+                  )}
+                </div>
               </div>
 
               {checkResult && (
@@ -801,6 +853,15 @@ function TranscriptStudio() {
                           )}
                         </div>
                       ))}
+                      <div className="mt-4 flex items-center gap-3 flex-wrap">
+                        <button
+                          className="zen-btn zen-btn-primary"
+                          onClick={handleGenerateFinal}
+                          disabled={finalLoading || (!selectedTitle && !translatedText)}
+                        >
+                          {finalLoading ? '生成中…' : '✨ 仍要生成终稿'}
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-6">
@@ -808,7 +869,6 @@ function TranscriptStudio() {
                         <polyline points="20 6 9 17 4 12"/>
                       </svg>
                       <p className="mt-3 text-[var(--accent-primary)] font-medium">内容合规，可以发布！</p>
-                      {/* 一键生成终稿 */}
                       <button
                         className="mt-4 zen-btn zen-btn-primary"
                         onClick={handleGenerateFinal}
@@ -817,7 +877,7 @@ function TranscriptStudio() {
                         {finalLoading ? (
                           <><svg className="animate-spin-slow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8"/></svg>生成中…</>
                         ) : (
-                          <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.853 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.853 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.853 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.853 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>✨ 一键生成可发布终稿</>
+                          <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.853 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.853 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.853 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.853 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>✨ 生成可发布终稿</>
                         )}
                       </button>
                     </div>
@@ -849,94 +909,147 @@ function TranscriptStudio() {
           )}
 
           {/* ── 步骤7：终稿生成 ── */}
-          {currentStep === 'final' && finalDraft && (
+          {currentStep === 'final' && (
             <div className="animate-fade-in space-y-6">
-              <div className="zen-card p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-[var(--accent-primary)] text-white text-xs flex items-center justify-center">✓</span>
-                    <h2 className="font-serif text-lg font-semibold">终稿已生成</h2>
+              {finalDraft ? (
+                <>
+                  <div className="zen-card p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-[var(--accent-primary)] text-white text-xs flex items-center justify-center">✓</span>
+                        <h2 className="font-serif text-lg font-semibold">终稿已生成</h2>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="zen-btn zen-btn-ghost text-xs"
+                          onClick={() => navigator.clipboard.writeText(finalDraft)}
+                        >
+                          复制全文
+                        </button>
+                        <button
+                          className="zen-btn zen-btn-ghost text-xs"
+                          onClick={() => { setFinalDraft(''); setFinalError(''); }}
+                        >
+                          重新生成
+                        </button>
+                      </div>
+                    </div>
+                    <div className="zen-prose whitespace-pre-wrap text-sm leading-relaxed bg-[var(--bg-secondary)] p-5 rounded-[var(--radius-sm)]">
+                      {finalDraft}
+                    </div>
+                    <div className="mt-5 p-4 rounded-[var(--radius-sm)] bg-[var(--accent-primary)]/5 border border-[var(--accent-primary)]/20">
+                      <p className="text-sm font-medium text-[var(--accent-primary)] mb-1">✓ 复制即可发布</p>
+                      <p className="text-xs text-[var(--text-muted)]">终稿已整合标题、正文、标签、封面文字建议。直接复制全文粘贴到小红书发布即可。</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="zen-btn zen-btn-ghost text-xs"
-                      onClick={() => {
-                        navigator.clipboard.writeText(finalDraft);
-                      }}
-                    >
-                      复制全文
-                    </button>
-                    <button
-                      className="zen-btn zen-btn-ghost text-xs"
-                      onClick={() => { setFinalDraft(''); }}
-                    >
-                      重新生成
-                    </button>
-                  </div>
-                </div>
-                <div className="zen-prose whitespace-pre-wrap text-sm leading-relaxed bg-[var(--bg-secondary)] p-5 rounded-[var(--radius-sm)]">
-                  {finalDraft}
-                </div>
-                <div className="mt-5 p-4 rounded-[var(--radius-sm)] bg-[var(--accent-primary)]/5 border border-[var(--accent-primary)]/20">
-                  <p className="text-sm font-medium text-[var(--accent-primary)] mb-1">✓ 复制即可发布</p>
-                  <p className="text-xs text-[var(--text-muted)]">终稿已整合标题、正文、标签、封面文字建议。直接复制全文粘贴到小红书发布即可。</p>
-                </div>
-              </div>
 
-              {/* 快速操作区 */}
-              <div className="grid sm:grid-cols-2 gap-4">
-                <a
-                  href="/tools/poster"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="zen-card p-5 flex items-center gap-4 hover:border-[var(--accent-primary)]/40 transition-colors"
-                >
-                  <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--text-secondary)]/10 flex items-center justify-center">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                  {/* 快速操作区 */}
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <a
+                      href="/tools/poster"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="zen-card p-5 flex items-center gap-4 hover:border-[var(--accent-primary)]/40 transition-colors"
+                    >
+                      <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--text-secondary)]/10 flex items-center justify-center">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">生成封面图</p>
+                        <p className="text-xs text-[var(--text-muted)]">前往墨境，用终稿中的封面文字生成精美封面</p>
+                      </div>
+                    </a>
+                    <a
+                      href="/tools/calendar"
+                      className="zen-card p-5 flex items-center gap-4 hover:border-[var(--accent-primary)]/40 transition-colors"
+                    >
+                      <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--accent-primary)]/10 flex items-center justify-center">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.5" strokeLinecap="round">
+                          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">加入发布日历</p>
+                        <p className="text-xs text-[var(--text-muted)]">排入下周发布计划，保持稳定的发布节奏</p>
+                      </div>
+                    </a>
+                  </div>
+                </>
+              ) : (
+                /* 无终稿时的引导状态 */
+                <div className="zen-card p-8 text-center">
+                  <div className="w-14 h-14 rounded-full bg-[var(--accent-primary)]/12 flex items-center justify-center mx-auto mb-4">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.5" strokeLinecap="round">
+                      <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                     </svg>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">生成封面图</p>
-                    <p className="text-xs text-[var(--text-muted)]">前往墨境，用终稿中的封面文字生成精美封面</p>
+                  <h2 className="font-serif text-lg font-semibold mb-2">生成你的第一篇终稿</h2>
+                  <p className="text-sm text-[var(--text-secondary)] mb-6 max-w-sm mx-auto">
+                    完成前面的步骤后，在这里一键生成可发布终稿，整合标题、正文、标签
+                  </p>
+
+                  <div className="grid grid-cols-3 gap-3 mb-6 text-left">
+                    {[
+                      { icon: '📝', label: '标题', sub: selectedTitle ? selectedTitle.slice(0, 20) + (selectedTitle.length > 20 ? '…' : '') || '未选' : '未选', done: !!selectedTitle },
+                      { icon: '📄', label: '正文', sub: translatedText ? translatedText.slice(0, 15) + '…' : '未生成', done: !!translatedText },
+                      { icon: '🏷', label: '标签', sub: tags.length > 0 ? tags.slice(0, 3).join(' ') : '未生成', done: tags.length > 0 },
+                    ].map(item => (
+                      <div key={item.label} className="p-3 rounded-[var(--radius-sm)] bg-[var(--bg-secondary)]">
+                        <p className="text-lg mb-1">{item.icon}</p>
+                        <p className="text-xs font-medium text-[var(--text-muted)]">{item.label}</p>
+                        <p className={`text-xs mt-0.5 ${item.done ? 'text-[var(--accent-primary)]' : 'text-[var(--text-muted)]'}`}>{item.sub}</p>
+                      </div>
+                    ))}
                   </div>
-                </a>
-                <a
-                  href="/tools/calendar"
-                  className="zen-card p-5 flex items-center gap-4 hover:border-[var(--accent-primary)]/40 transition-colors"
-                >
-                  <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--accent-primary)]/10 flex items-center justify-center">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.5" strokeLinecap="round">
-                      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                    </svg>
+
+                  <button
+                    className="zen-btn zen-btn-primary"
+                    onClick={handleGenerateFinal}
+                    disabled={finalLoading || (!selectedTitle && !translatedText)}
+                  >
+                    {finalLoading ? (
+                      <><svg className="animate-spin-slow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8"/></svg>生成中…</>
+                    ) : '✨ 生成终稿'}
+                  </button>
+                  {finalError && (
+                    <p className="text-xs text-[var(--accent-warm)] mt-3">{finalError}</p>
+                  )}
+
+                  <div className="mt-5 flex items-center justify-center gap-4 text-xs text-[var(--text-muted)]">
+                    <button onClick={() => goToStep('check')} className="hover:text-[var(--accent-primary)]">合规检测</button>
+                    <span>|</span>
+                    <button onClick={() => goToStep('tags')} className="hover:text-[var(--accent-primary)]">添加标签</button>
+                    <span>|</span>
+                    <button onClick={() => goToStep('titles')} className="hover:text-[var(--accent-primary)]">生成标题</button>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">加入发布日历</p>
-                    <p className="text-xs text-[var(--text-muted)]">排入下周发布计划，保持稳定的发布节奏</p>
-                  </div>
-                </a>
-              </div>
+                </div>
+              )}
 
               {/* 从头开始新一篇 */}
-              <div className="text-center pt-4 border-t border-[var(--border-light)]">
-                <button
-                  className="text-sm text-[var(--text-muted)] hover:text-[var(--accent-primary)] transition-colors"
-                  onClick={() => {
-                    setSourceText('');
-                    setTranslatedText('');
-                    setTitles([]);
-                    setSelectedTitle('');
-                    setTags([]);
-                    setPosterQuote('');
-                    setCheckResult(null);
-                    setCheckText('');
-                    setFinalDraft('');
-                    goToStep('collect');
-                  }}
-                >
-                  ← 从头开始创作新一篇
-                </button>
-              </div>
+              {(finalDraft || selectedTitle || translatedText) && (
+                <div className="text-center pt-4 border-t border-[var(--border-light)]">
+                  <button
+                    className="text-sm text-[var(--text-muted)] hover:text-[var(--accent-primary)] transition-colors"
+                    onClick={() => {
+                      setSourceText('');
+                      setTranslatedText('');
+                      setTitles([]);
+                      setSelectedTitle('');
+                      setTags([]);
+                      setPosterQuote('');
+                      setCheckResult(null);
+                      setCheckText('');
+                      setFinalDraft('');
+                      setFinalError('');
+                      goToStep('collect');
+                    }}
+                  >
+                    ← 从头开始创作新一篇
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
