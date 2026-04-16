@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 
@@ -14,134 +14,142 @@ type ExtractedNote = {
   url: string;
 };
 
-function BookmarkletCard() {
-  const [copied, setCopied] = useState(false);
+const STORAGE_KEY = 'zenjing_xhs_notes';
 
-  // Bookmarklet: 从当前小红书页面提取笔记ID并保存
-  const bookmarkletCode = `javascript:(function(){
-  var url=location.href;
-  var host=location.hostname;
-  if(!host.includes('xiaohongshu')&&!host.includes('xhslink')){alert('请在小红书页面使用此书签');return;}
+const EXTRACTOR_SCRIPT = `(function(){
+  var results=[];
   var noteIds=[];
-  // 方法1: 从URL中提取
-  var m=url.match(/xiaohongshu\\.com\\/discovery\\/item\\/([a-zA-Z0-9]+)/);
-  if(m){noteIds.push({id:m[1],type:'note',url:url});}
-  // 方法2: 从页面DOM提取笔记ID列表
-  var scripts=document.querySelectorAll('script');
-  for(var s of scripts){
-    var txt=s.textContent||'';
-    var ids=txt.match(/"noteId"\\s*:\\s*"([a-zA-Z0-9]+)"/g)||[];
-    ids.forEach(function(x){var id=x.match(/"noteId"\\s*:\\s*"([a-zA-Z0-9]+)"/);if(id&&noteIds.filter(function(n){return n.id===id[1];}).length===0){noteIds.push({id:id[1],type:'note'});}});
-  }
-  // 也从a标签href中提取
-  var links=document.querySelectorAll('a[href*="discovery/item"]');
-  for(var l of links){
-    var href=l.getAttribute('href')||'';
-    var hm=href.match(/\\/discovery\\/item\\/([a-zA-Z0-9]+)/);
-    if(hm&&noteIds.filter(function(n){return n.id===hm[1];}).length===0){
-      noteIds.push({id:hm[1],type:'note',url:'https://www.xiaohongshu.com'+href});
-    }
-  }
-  if(noteIds.length===0){alert('未找到笔记ID，请确保在小红书页面使用');return;}
-  var STORAGE_KEY='zenjing_xhs_pending';
-  var existing=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
-  var merged=existing.concat(noteIds.filter(function(n){return existing.filter(function(e){return e.id===n.id;}).length===0;}));
-  localStorage.setItem(STORAGE_KEY,JSON.stringify(merged.slice(0,20)));
-  alert('已提取 '+merged.length+' 个笔记ID，即将跳转到提取页面');
-  window.open('${typeof window !== "undefined" ? window.location.origin : ""}/tools/extract','_blank');
+  var u=location.href;
+  var m=u.match(/xiaohongshu\\.com\\/discovery\\/item\\/([a-zA-Z0-9]+)/);
+  if(m)noteIds.push({id:m[1],url:u});
+  document.querySelectorAll('a[href*="discovery/item"]').forEach(function(a){
+    var h=a.getAttribute('href');
+    var mm=h.match(/\\/discovery\\/item\\/([a-zA-Z0-9]+)/);
+    if(mm&&!noteIds.filter(function(i){return i.id===mm[1];}).length)
+      noteIds.push({id:mm[1],url:'https://www.xiaohongshu.com'+h});
+  });
+  document.querySelectorAll('script').forEach(function(s){
+    var t=s.textContent||'';
+    var ms=t.matchAll(/"noteId"\\s*:\\s*"([a-zA-Z0-9]+)"/g);
+    Array.from(ms).forEach(function(x){
+      if(!noteIds.filter(function(i){return i.id===x[1];}).length)
+        noteIds.push({id:x[1]});
+    });
+  });
+  var ti='',de='',ni='',lk='',cl='';
+  document.querySelectorAll('script').forEach(function(s){
+    var tx=s.textContent||'';
+    if(!ti){var mt=tx.match(/"title"\\s*:\\s*"([^"]{1,200})"/);if(mt)ti=mt[1];}
+    if(!de){var md=tx.match(/"desc"\\s*:\\s*"([^"]{1,3000})"/);if(md)de=md[1];}
+    if(!ni){var mn=tx.match(/"nickname"\\s*:\\s*"([^"]*)"/);if(mn)ni=mn[1];}
+    if(!lk){var ml=tx.match(/"likedCount"\\s*:\\s*(\\d+)/);if(ml)lk=ml[1];}
+    if(!cl){var mc=tx.match(/"collectedCount"\\s*:\\s*(\\d+)/);if(mc)cl=mc[1];}
+  });
+  var mainNote={id:noteIds[0]?.id||'x',title:ti,content:de,author:ni,likes:lk,collected:cl,url:u};
+  var noteUrls=noteIds.slice(1,20).map(function(i){return i.url||'https://www.xiaohongshu.com/discovery/item/'+i.id;});
+  localStorage.setItem('zenjing_xhs_notes',JSON.stringify({notes:[mainNote],noteIds:noteUrls,count:noteIds.length,source:u}));
+  document.body.innerHTML='<div style="font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f7f5f0;color:#333;">'+
+    '<div style="font-size:48px;margin-bottom:16px;">✅</div>'+
+    '<div style="font-size:20px;font-weight:600;margin-bottom:8px;">提取完成</div>'+
+    '<div style="color:#666;font-size:14px;">共 '+noteIds.length+' 个笔记，正在获取内容…</div>'+
+    '<div style="margin-top:24px;font-size:12px;color:#999;">请稍候，窗口将自动关闭</div>'+
+    '</div>';
+  setTimeout(function(){
+    try{localStorage.setItem('zenjing_done','1');}catch(e){}
+    window.close();
+  },500);
 })()`;
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(bookmarkletCode).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  return (
-    <div className="zen-card p-6">
-      <h3 className="font-serif text-base font-semibold mb-1">书签工具</h3>
-      <p className="text-xs text-[var(--text-secondary)] mb-4">拖动下方按钮到浏览器书签栏，在小红书页面点击即可自动提取</p>
-
-      {/* 书签按钮 */}
-      <a
-        href={bookmarkletCode}
-        className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#FF4D4F] text-white font-medium text-sm hover:opacity-90 transition-opacity mb-4"
-        title="拖到书签栏"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
-        </svg>
-        禅镜 · 提取小红书内容
-      </a>
-
-      <div className="flex items-center gap-3">
-        <button
-          className="text-xs text-[var(--accent-primary)] hover:underline"
-          onClick={handleCopy}
-        >
-          {copied ? '✓ 已复制代码' : '复制书签代码'}
-        </button>
-        <span className="text-xs text-[var(--text-muted)]">|</span>
-        <span className="text-xs text-[var(--text-muted)]">不会拖？查看图文教程</span>
-      </div>
-
-      <div className="mt-4 p-3 rounded-[var(--radius-sm)] bg-[var(--bg-secondary)] text-xs text-[var(--text-muted)]">
-        <strong>书签栏在哪里？</strong> 浏览器顶部那一行。如果看不到，Chrome 可以用 <code className="bg-[var(--bg-primary)] px-1 rounded">Ctrl+Shift+B</code>（Windows）或 <code className="bg-[var(--bg-primary)] px-1 rounded">Cmd+Shift+B</code>（Mac）调出书签栏。
-      </div>
-    </div>
-  );
+function openExtractor(xhsUrl: string) {
+  if (!xhsUrl.trim()) {
+    alert('请先输入小红书链接');
+    return;
+  }
+  const popup = window.open(xhsUrl, '_blank', 'width=1,height=1,left=-9999,top=-9999,popup=yes');
+  if (!popup) {
+    alert('浏览器拦截了弹窗，请在浏览器设置中允许 https://zenjing.vercel.app 弹出窗口');
+    return;
+  }
+  const tid = setInterval(() => {
+    try {
+      if (popup.document.readyState === 'complete') {
+        clearInterval(tid);
+        popup.document.open();
+        popup.document.write(`<!DOCTYPE html><html><head><title>提取中</title></head><body><script>${EXTRACTOR_SCRIPT}<\/script></body></html>`);
+        popup.document.close();
+        popup.focus();
+      }
+    } catch { clearInterval(tid); }
+  }, 100);
+  setTimeout(() => clearInterval(tid), 8000);
 }
 
 export default function ExtractPage() {
   const [notes, setNotes] = useState<ExtractedNote[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [extractedCount, setExtractedCount] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [noteCount, setNoteCount] = useState(0);
+  const [xhsUrl, setXhsUrl] = useState('');
+  const [urlError, setUrlError] = useState('');
 
   useEffect(() => {
-    const STORAGE_KEY = 'zenjing_xhs_pending';
-    const pending = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    if (pending.length > 0) {
-      setExtractedCount(pending.length);
-      fetchNotes(pending);
-      // 清空待处理队列
-      localStorage.removeItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      try {
+        const data = JSON.parse(raw);
+        if (data.notes?.length > 0) {
+          setNoteCount(data.count || data.notes.length);
+          fetchNoteContent(data);
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      } catch { /* ignore */ }
     }
   }, []);
 
-  const fetchNotes = async (pendingNotes: Array<{ id: string; url?: string }>) => {
-    setLoading(true);
-    setError('');
-    const results: ExtractedNote[] = [];
+  const fetchNoteContent = async (data: {
+    notes: ExtractedNote[];
+    noteIds: string[];
+  }) => {
+    setNotes(data.notes);
+    if (!data.noteIds || data.noteIds.length === 0) return;
 
+    setLoading(true);
+    const allNotes = [...data.notes];
     await Promise.allSettled(
-      pendingNotes.map(async (note) => {
+      (data.noteIds as string[]).slice(0, 6).map(async (url: string) => {
         try {
           const res = await fetch('/api/xhs/scrape', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: note.url || `https://www.xiaohongshu.com/discovery/item/${note.id}` }),
+            body: JSON.stringify({ url }),
           });
-          const data = await res.json();
-          if (data.success && data.data) {
-            results.push({
-              id: note.id,
-              title: data.data.title || '',
-              content: data.data.content || '',
-              author: data.data.author || '',
-              likes: data.data.likes || '',
-              collected: data.data.collected || '',
-              url: note.url || `https://www.xiaohongshu.com/discovery/item/${note.id}`,
+          const d = await res.json();
+          if (d.success && d.data) {
+            allNotes.push({
+              id: (url.match(/discovery\/item\/([a-zA-Z0-9]+)/)?.[1]) || String(Math.random()),
+              title: d.data.title || '',
+              content: d.data.content || '',
+              author: d.data.author || '',
+              likes: d.data.likes || '',
+              collected: d.data.collected || '',
+              url,
             });
           }
         } catch { /* skip */ }
       })
     );
-
-    setNotes(results);
+    setNotes(allNotes.filter((r, i) => i === 0 || r.content));
     setLoading(false);
+  };
+
+  const handleExtract = () => {
+    const url = xhsUrl.trim();
+    if (!url) { setUrlError('请输入小红书链接'); return; }
+    if (!url.includes('xiaohongshu.com') && !url.includes('xhslink.com')) {
+      setUrlError('请输入有效的小红书链接'); return;
+    }
+    setUrlError('');
+    openExtractor(url);
   };
 
   const handleCopyAll = () => {
@@ -159,7 +167,6 @@ export default function ExtractPage() {
       }
       return parts.join('\n');
     }).join('\n\n' + '─'.repeat(30) + '\n\n');
-
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
@@ -182,26 +189,74 @@ export default function ExtractPage() {
               </div>
               <h1 className="font-serif text-2xl font-bold">小红书内容提取</h1>
             </div>
-            <p className="text-[var(--text-secondary)] text-sm">用浏览器书签工具自动提取小红书笔记内容，绕过登录限制</p>
+            <p className="text-[var(--text-secondary)] text-sm">粘贴链接 → 点击提取 → 自动获取内容，完全不需要手动复制粘贴</p>
           </div>
         </div>
 
         <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
-          {/* 使用流程 */}
+          {/* 核心操作 */}
+          <div className="zen-card p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 rounded-full bg-[#FF4D4F]/12 flex items-center justify-center">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF4D4F" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+              </div>
+              <div>
+                <h2 className="font-serif text-lg font-bold">一键提取</h2>
+                <p className="text-xs text-[var(--text-muted)]">粘贴小红书笔记链接，自动获取正文内容</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <input
+                  className="zen-input"
+                  placeholder="粘贴小红书笔记链接（包含 /discovery/item/ 的URL）"
+                  value={xhsUrl}
+                  onChange={e => { setXhsUrl(e.target.value); setUrlError(''); }}
+                  onKeyDown={e => e.key === 'Enter' && handleExtract()}
+                />
+                {urlError && <p className="text-xs text-[var(--accent-warm)] mt-1.5">{urlError}</p>}
+              </div>
+              <button
+                className="zen-btn zen-btn-primary w-full py-3 text-base"
+                onClick={handleExtract}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                提取内容
+              </button>
+            </div>
+
+            <div className="mt-4 p-3 rounded-[var(--radius-sm)] bg-[var(--bg-secondary)]">
+              <p className="text-xs text-[var(--text-muted)]">
+                <strong>原理说明：</strong>系统会自动打开小红书页面，利用你的登录状态提取笔记内容，全程在你的浏览器内完成，不需要手动复制粘贴。
+                点击「提取内容」后，等待浏览器弹出窗口自动关闭即可。
+              </p>
+            </div>
+          </div>
+
+          {/* 使用说明 */}
           <div className="zen-card p-6">
-            <h3 className="font-serif text-base font-semibold mb-4">使用方法（3步）</h3>
+            <h3 className="font-serif text-base font-semibold mb-4">使用步骤</h3>
             <div className="space-y-4">
               {[
-                { step: '1', title: '拖书签到浏览器', desc: '把下方红色的「禅镜·提取小红书内容」按钮拖到浏览器书签栏' },
-                { step: '2', title: '打开小红书笔记/主页', desc: '在浏览器中打开你的小红书页面，登录后浏览到想提取的笔记列表页' },
-                { step: '3', title: '点击书签 → 自动提取', desc: '点击书签栏的按钮，系统自动提取笔记ID，跳转到本页显示内容' },
+                { step: '1', title: '复制小红书笔记链接', desc: '在小红书App或网页版，打开你想提取的笔记，点击右上角「分享」→「复制链接」' },
+                { step: '2', title: '粘贴到上方输入框', desc: '把复制的链接粘贴到本页面顶部的输入框中' },
+                { step: '3', title: '点击「提取内容」', desc: '等待浏览器弹出小红书页面，提取完成后自动关闭，内容显示在下方' },
               ].map(item => (
                 <div key={item.step} className="flex items-start gap-4">
-                  <div className="w-8 h-8 rounded-full bg-[var(--accent-primary)]/12 text-[var(--accent-primary)] font-bold text-sm flex items-center justify-center flex-shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-[var(--accent-primary)]/12 text-[var(--accent-primary)] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                     {item.step}
                   </div>
                   <div>
-                    <p className="text-sm font-medium">{item.title}</p>
+                    <p className="text-sm font-medium">{item.step === '1' ? item.title : item.title}</p>
                     <p className="text-xs text-[var(--text-secondary)] mt-0.5">{item.desc}</p>
                   </div>
                 </div>
@@ -209,26 +264,20 @@ export default function ExtractPage() {
             </div>
           </div>
 
-          {/* 书签工具 */}
-          <BookmarkletCard />
-
           {/* 提取结果 */}
           {(loading || notes.length > 0) && (
             <div className="zen-card p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-serif text-base font-semibold">
                   提取结果
-                  {extractedCount > 0 && (
+                  {noteCount > 0 && (
                     <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-[var(--accent-primary)]/12 text-[var(--accent-primary)] font-medium">
-                      {extractedCount} 个笔记
+                      {noteCount} 个笔记
                     </span>
                   )}
                 </h3>
                 {notes.length > 0 && (
-                  <button
-                    className="text-xs zen-btn zen-btn-primary"
-                    onClick={handleCopyAll}
-                  >
+                  <button className="text-xs zen-btn zen-btn-primary" onClick={handleCopyAll}>
                     {copied ? '✓ 已复制全部' : '复制全部内容'}
                   </button>
                 )}
@@ -239,13 +288,7 @@ export default function ExtractPage() {
                   <svg className="animate-spin-slow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2">
                     <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8"/>
                   </svg>
-                  <p className="text-sm text-[var(--text-secondary)]">正在提取笔记内容…</p>
-                </div>
-              )}
-
-              {error && (
-                <div className="p-4 rounded-[var(--radius-sm)] bg-[var(--accent-warm)]/8 border border-[var(--accent-warm)]/20">
-                  <p className="text-sm text-[var(--accent-warm)]">{error}</p>
+                  <p className="text-sm text-[var(--text-secondary)]">正在获取笔记内容…</p>
                 </div>
               )}
 
@@ -263,7 +306,9 @@ export default function ExtractPage() {
                         </button>
                       </div>
                       {note.title && <p className="text-sm font-medium mb-2">{note.title}</p>}
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed line-clamp-4">{note.content || '（正文未能提取）'}</p>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed line-clamp-4">
+                        {note.content || '（正文未能提取，可尝试直接复制正文粘贴）'}
+                      </p>
                       {(note.likes || note.collected) && (
                         <p className="text-xs text-[var(--text-muted)] mt-2">
                           {note.likes ? `♥ ${note.likes}` : ''} {note.collected ? `★ ${note.collected}` : ''}
@@ -274,7 +319,7 @@ export default function ExtractPage() {
 
                   <div className="p-4 rounded-[var(--radius-sm)] bg-[var(--accent-primary)]/8 border border-[var(--accent-primary)]/20">
                     <p className="text-sm text-[var(--accent-primary)] font-medium mb-1">内容已准备好</p>
-                    <p className="text-xs text-[var(--text-secondary)]">点击上方「复制全部内容」→ 跳转到创作工作台粘贴即可</p>
+                    <p className="text-xs text-[var(--text-secondary)]">点击「复制全部内容」，然后去创作工作台粘贴</p>
                     <a href="/tools/studio" className="inline-flex items-center gap-1 mt-2 text-xs text-[var(--accent-primary)] hover:underline">
                       前往创作工作台 →
                     </a>
@@ -286,16 +331,14 @@ export default function ExtractPage() {
 
           {/* 空状态 */}
           {!loading && notes.length === 0 && (
-            <div className="text-center py-16">
-              <svg className="mx-auto mb-4 text-[var(--text-muted)]" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round">
+            <div className="text-center py-10">
+              <svg className="mx-auto mb-3 text-[var(--text-muted)]" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              <p className="text-[var(--text-secondary)] text-sm font-medium mb-2">还没有提取到内容</p>
-              <p className="text-xs text-[var(--text-muted)] max-w-sm mx-auto">
-                请先在浏览器中打开小红书，然后点击书签栏里的「禅镜·提取小红书内容」按钮
-              </p>
+              <p className="text-[var(--text-secondary)] text-sm font-medium mb-1">粘贴链接即可自动提取</p>
+              <p className="text-xs text-[var(--text-muted)]">不需要手动复制粘贴，一步搞定</p>
             </div>
           )}
         </div>
