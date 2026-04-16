@@ -133,6 +133,51 @@ const modules = [
       </svg>
     ),
   },
+  {
+    id: 'library',
+    name: '素材库',
+    sub: '积累管理',
+    desc: '积累禅修内容素材，支持分类管理、全文搜索。一键导入创作工作台，形成个人内容资产。',
+    href: '/tools/library',
+    tag: '新功能',
+    tagColor: 'var(--accent-warm)',
+    color: 'var(--accent-warm)',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'review',
+    name: '内容复盘',
+    sub: '数据诊断',
+    desc: '输入已发布笔记的数据，AI分析优缺点，给出下一篇文章的具体改进建议和内容方向。',
+    href: '/tools/review',
+    tag: '新功能',
+    tagColor: 'var(--accent-primary)',
+    color: '#6B8E7A',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'accounts',
+    name: '账号管理',
+    sub: '多账号切换',
+    desc: '管理多个小红书账号，每个账号的素材库和草稿完全隔离，账号切换一键完成。',
+    href: '/tools/accounts',
+    tag: '新功能',
+    tagColor: 'var(--accent-primary)',
+    color: '#8B7B9E',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+      </svg>
+    ),
+  },
 ];
 
 export default function ToolsPage() {
@@ -144,7 +189,7 @@ export default function ToolsPage() {
         <div className="bg-[var(--bg-secondary)]/50 border-b border-[var(--border-light)]">
           <div className="max-w-5xl mx-auto px-6 py-12">
             <h1 className="font-serif text-3xl font-bold mb-2">工具站</h1>
-            <p className="text-[var(--text-secondary)] text-sm">七件法器，解决佛学小红书运营的核心问题</p>
+            <p className="text-[var(--text-secondary)] text-sm">禅修内容一站式运营平台，十个工具覆盖创作全流程</p>
           </div>
         </div>
 
