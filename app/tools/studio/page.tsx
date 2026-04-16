@@ -390,7 +390,6 @@ function TranscriptStudio() {
                     <span className="text-white text-xs font-bold">红</span>
                   </div>
                   <h3 className="text-sm font-semibold">小红书内容采集</h3>
-                  <span className="text-xs text-[var(--text-muted)]">粘贴主页或笔记链接，一键提取</span>
                 </div>
                 <div className="flex gap-2 mb-3">
                   <input
@@ -431,6 +430,24 @@ function TranscriptStudio() {
                   ① 用户主页（/user/profile/）— 自动提取多篇笔记
                   ② 单篇笔记（/discovery/item/）— 提取单篇内容
                 </p>
+
+                {/* 浏览器提取引导 */}
+                <div className="mt-3 pt-3 border-t border-[var(--border-light)]">
+                  <div className="flex items-start gap-3 p-3 rounded-[var(--radius-sm)] bg-[var(--bg-secondary)]">
+                    <svg className="text-[var(--text-muted)] flex-shrink-0 mt-0.5" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        如果自动提取失败（小红书有反爬限制），推荐使用
+                        <a href="/tools/extract" className="text-[var(--accent-primary)] font-medium hover:underline ml-1">
+                          浏览器提取工具 →
+                        </a>
+                      </p>
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">用浏览器书签一键提取你登录后看到的所有笔记，无需手动复制</p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="zen-card p-6">

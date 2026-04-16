@@ -178,6 +178,23 @@ const modules = [
       </svg>
     ),
   },
+  {
+    id: 'extract',
+    name: '小红书提取',
+    sub: '浏览器端采集',
+    desc: '用浏览器书签工具提取你登录后看到的小红书笔记内容，绕过反爬限制，彻底告别手动复制粘贴。',
+    href: '/tools/extract',
+    tag: '新功能',
+    tagColor: 'var(--accent-warm)',
+    color: '#FF4D4F',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+    ),
+  },
 ];
 
 export default function ToolsPage() {
@@ -189,7 +206,7 @@ export default function ToolsPage() {
         <div className="bg-[var(--bg-secondary)]/50 border-b border-[var(--border-light)]">
           <div className="max-w-5xl mx-auto px-6 py-12">
             <h1 className="font-serif text-3xl font-bold mb-2">工具站</h1>
-            <p className="text-[var(--text-secondary)] text-sm">禅修内容一站式运营平台，十个工具覆盖创作全流程</p>
+            <p className="text-[var(--text-secondary)] text-sm">禅修内容一站式运营平台，十一个工具覆盖创作全流程</p>
           </div>
         </div>
 
