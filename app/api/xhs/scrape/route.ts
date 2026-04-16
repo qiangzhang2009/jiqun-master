@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const XHS_NOTE_PATTERNS = ['xiaohongshu.com/discovery/item/', 'xhslink.com'];
-
-function isXHSUrl(url: string): boolean {
-  return XHS_NOTE_PATTERNS.some(p => url.includes(p));
+function isXHSUrl(rawUrl: string): boolean {
+  try {
+    const u = new URL(rawUrl);
+    const host = u.hostname;
+    const path = u.pathname;
+    // 只检查 hostname + pathname，不看 query string
+    return (
+      host === 'www.xiaohongshu.com' ||
+      host === 'xhslink.com' ||
+      host === 'www.xhslink.com'
+    ) && (
+      path.includes('/discovery/item/') ||
+      path.includes('/user/profile/')
+    );
+  } catch { return false; }
 }
 
 async function fetchHTML(url: string): Promise<string> {
@@ -49,12 +60,12 @@ function extractNoteIdsFromProfile(html: string): string[] {
     if (ids.length > 0) return ids.slice(0, 20); // 最多20篇
   }
   // 方法2：直接从HTML中找discovery/item链接
+  const linkIds: string[] = [];
   const linkMatches = html.matchAll(/xiaohongshu\.com\/discovery\/item\/([a-zA-Z0-9]+)/g);
-  const ids: string[] = [];
   for (const m of linkMatches) {
-    if (!ids.includes(m[1])) ids.push(m[1]);
+    if (!linkIds.includes(m[1])) linkIds.push(m[1]);
   }
-  return ids.slice(0, 20);
+  return linkIds.slice(0, 20);
 }
 
 function parseNoteFromHTML(html: string): {

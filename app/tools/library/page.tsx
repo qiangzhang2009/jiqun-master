@@ -6,7 +6,7 @@ import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import {
   getMaterials, deleteMaterial, saveMaterial, searchMaterials,
-  CATEGORIES, type Material, type MaterialCategory
+  getActiveAccount, CATEGORIES, type Material, type MaterialCategory
 } from '@/lib/storage';
 import { useEffect } from 'react';
 
