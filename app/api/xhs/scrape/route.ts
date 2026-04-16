@@ -1,149 +1,128 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const XHS_BASE_URLS = [
-  'https://www.xiaohongshu.com',
-  'https://xhslink.com',
-];
+const XHS_NOTE_PATTERNS = ['xiaohongshu.com/discovery/item/', 'xhslink.com'];
 
 function isXHSUrl(url: string): boolean {
-  return XHS_BASE_URLS.some(base => url.includes(base));
+  return XHS_NOTE_PATTERNS.some(p => url.includes(p));
 }
 
-function extractXHSInfo(url: string): { type: 'profile' | 'note' | 'unknown'; userId?: string; noteId?: string } {
-  try {
-    const u = new URL(url);
-
-    // 笔记详情页：/discovery/item/:noteId
-    const noteMatch = u.pathname.match(/\/discovery\/item\/([a-zA-Z0-9]+)/);
-    if (noteMatch) {
-      return { type: 'note', noteId: noteMatch[1] };
-    }
-
-    // 用户主页：/user/profile/:userId
-    const profileMatch = u.pathname.match(/\/user\/profile\/([a-zA-Z0-9]+)/);
-    if (profileMatch) {
-      return { type: 'profile', userId: profileMatch[1] };
-    }
-
-    // 短链接：xhslink.com → 重定向处理
-    if (u.hostname === 'xhslink.com') {
-      return { type: 'unknown' };
-    }
-
-    return { type: 'unknown' };
-  } catch {
-    return { type: 'unknown' };
-  }
-}
-
-async function fetchXHSContent(url: string): Promise<string> {
-  const headers = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1',
-    'Cache-Control': 'max-age=0',
-    'Referer': 'https://www.xiaohongshu.com/',
-  };
-
+async function fetchHTML(url: string): Promise<string> {
   const response = await fetch(url, {
-    headers,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Cache-Control': 'max-age=0',
+    },
     redirect: 'follow',
   });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.text();
+}
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+function extractUserId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const m = u.pathname.match(/\/user\/profile\/([a-zA-Z0-9]+)/);
+    return m ? m[1] : null;
+  } catch { return null; }
+}
+
+function extractNoteIdsFromProfile(html: string): string[] {
+  // 方法1：提取 __INITIAL_STATE__ 中的笔记ID列表
+  const stateMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{.*?\});?\s*<\/script>/s);
+  if (stateMatch) {
+    const jsonStr = decodeHTMLEntities(stateMatch[1]);
+    const ids: string[] = [];
+    // 匹配 noteId 字段
+    const noteIdMatches = jsonStr.matchAll(/"noteId"\s*:\s*"([a-zA-Z0-9]+)"/g);
+    for (const m of noteIdMatches) {
+      if (!ids.includes(m[1])) ids.push(m[1]);
+    }
+    if (ids.length > 0) return ids.slice(0, 20); // 最多20篇
   }
-
-  return await response.text();
+  // 方法2：直接从HTML中找discovery/item链接
+  const linkMatches = html.matchAll(/xiaohongshu\.com\/discovery\/item\/([a-zA-Z0-9]+)/g);
+  const ids: string[] = [];
+  for (const m of linkMatches) {
+    if (!ids.includes(m[1])) ids.push(m[1]);
+  }
+  return ids.slice(0, 20);
 }
 
 function parseNoteFromHTML(html: string): {
-  title: string;
-  content: string;
-  author: string;
-  likes: string;
-  collected: string;
+  title: string; content: string; author: string; likes: string; collected: string;
 } | null {
   try {
-    // 尝试从 __INITIAL_SSR_STATE__ 或 window.__INITIAL_STATE__ 中提取数据
     const stateMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{.*?\});?\s*<\/script>/s);
-
     if (stateMatch) {
-      // 提取 JSON 数据（可能需要解码 HTML 实体）
-      const jsonStr = stateMatch[1]
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&#39;/g, "'")
-        .replace(/\\"/g, '"')
-        .replace(/\\n/g, '\n');
-
-      // 找到笔记正文
-      const noteContentMatch = jsonStr.match(/"desc"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
-      const noteTitleMatch = jsonStr.match(/"title"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
-      const authorMatch = jsonStr.match(/"nickname"\s*:\s*"([^"]*)"/);
+      const jsonStr = decodeHTMLEntities(stateMatch[1]);
+      // 提取 desc（正文）
+      const descMatch = jsonStr.match(/"desc"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      // 提取 title
+      const titleMatch = jsonStr.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      // 提取 nickname
+      const nickMatch = jsonStr.match(/"nickname"\s*:\s*"([^"]*)"/);
+      // 提取点赞/收藏
       const likeMatch = jsonStr.match(/"likedCount"\s*:\s*(\d+)/);
-      const collectMatch = jsonStr.match(/"collectedCount"\s*:\s*(\d+)/);
+      const collMatch = jsonStr.match(/"collectedCount"\s*:\s*(\d+)/);
 
-      const content = noteContentMatch
-        ? decodeHTMLEntities(noteContentMatch[1])
-        : '';
-      const title = noteTitleMatch ? decodeHTMLEntities(noteTitleMatch[1]) : '';
-      const author = authorMatch ? authorMatch[1] : '';
+      const content = descMatch ? descMatch[1] : '';
+      const title = titleMatch ? titleMatch[1] : '';
 
       if (content || title) {
         return {
           title: title || content.slice(0, 30),
-          content: content,
-          author: author,
+          content,
+          author: nickMatch ? nickMatch[1] : '',
           likes: likeMatch ? likeMatch[1] : '',
-          collected: collectMatch ? collectMatch[1] : '',
+          collected: collMatch ? collMatch[1] : '',
         };
       }
     }
-
-    // 备用：从 og:description 或 meta 标签提取
-    const ogDescMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]*)"/i);
-    const ogTitleMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]*)"/i);
-
-    if (ogDescMatch || ogTitleMatch) {
+    // 备用：og:description
+    const ogDesc = html.match(/<meta[^>]*name="description"[^>]*content="([^"]*)"/i);
+    const ogTitle = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]*)"/i);
+    if (ogDesc || ogTitle) {
       return {
-        title: ogTitleMatch ? decodeHTMLEntities(ogTitleMatch[1]) : '',
-        content: ogDescMatch ? decodeHTMLEntities(ogDescMatch[1]) : '',
-        author: '',
-        likes: '',
-        collected: '',
+        title: ogTitle ? decodeHTMLEntities(ogTitle[1]) : '',
+        content: ogDesc ? decodeHTMLEntities(ogDesc[1]) : '',
+        author: '', likes: '', collected: '',
       };
     }
-
     return null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function decodeHTMLEntities(str: string): string {
   return str
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#x27;/g, "'")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
-    .replace(/&#x([a-fA-F0-9]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
-    .replace(/\\u([a-fA-F0-9]{4})/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, '\r')
-    .replace(/\\t/g, '\t');
+    .replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'").replace(/&#x27;/g, "'")
+    .replace(/\\u([a-fA-F0-9]{4})/g, (_, c) => String.fromCharCode(parseInt(c, 16)))
+    .replace(/\\n/g, '\n').replace(/\\r/g, '\r');
+}
+
+function buildNoteMaterial(note: { title: string; content: string; author: string; likes: string; collected: string; index: number }): string {
+  const parts: string[] = [];
+  parts.push(`【笔记 ${note.index}】`);
+  if (note.title) parts.push(`标题：${note.title}`);
+  if (note.content) parts.push(`正文：\n${note.content}`);
+  if (note.author) parts.push(`作者：${note.author}`);
+  if (note.likes || note.collected) {
+    const stats: string[] = [];
+    if (note.likes) stats.push(`获赞 ${note.likes}`);
+    if (note.collected) stats.push(`收藏 ${note.collected}`);
+    parts.push(`互动：${stats.join(' · ')}`);
+  }
+  return parts.join('\n');
 }
 
 export async function POST(req: NextRequest) {
@@ -154,93 +133,127 @@ export async function POST(req: NextRequest) {
   }
 
   if (!isXHSUrl(url)) {
-    return NextResponse.json({ error: '请输入有效的小红书链接（支持 xiaohongshu.com 或 xhslink.com）' }, { status: 400 });
-  }
-
-  const info = extractXHSInfo(url);
-
-  if (info.type === 'unknown' && url.includes('xhslink.com')) {
     return NextResponse.json({
-      error: '短链接需要先在浏览器中打开，然后分享详情页链接',
-      hint: '请在微信/小红书App中打开xhslink.com链接，复制详情页URL（包含/user/profile或/discovery/item的链接）粘贴到这里',
+      error: '请输入有效的小红书链接',
+      hint: '支持笔记详情页（包含 /discovery/item/）或用户主页（包含 /user/profile/）',
     }, { status: 400 });
   }
 
-  if (info.type === 'profile') {
-    return NextResponse.json({
-      error: '用户主页链接暂不支持自动采集',
-      hint: '请分享单篇笔记链接（包含 /discovery/item/ 的URL），系统会抓取该笔记的内容作为创作素材',
-      info: {
-        type: 'profile',
-        userId: info.userId,
-      },
-    }, { status: 400 });
-  }
+  // ── 处理用户主页链接 ──
+  if (url.includes('/user/profile/') && !url.includes('/discovery/item/')) {
+    try {
+      const userId = extractUserId(url);
+      if (!userId) {
+        return NextResponse.json({ error: '无法解析用户主页链接' }, { status: 400 });
+      }
 
-  try {
-    const html = await fetchXHSContent(url);
-    const noteData = parseNoteFromHTML(html);
+      const html = await fetchHTML(url);
+      const noteIds = extractNoteIdsFromProfile(html);
 
-    if (!noteData) {
+      if (noteIds.length === 0) {
+        return NextResponse.json({
+          error: '未能从主页提取到笔记',
+          hint: '该账号可能没有公开笔记，或需要登录才能查看。请尝试粘贴单篇笔记详情页链接。',
+        }, { status: 422 });
+      }
+
+      // 最多并行抓取6篇，避免超时
+      const limitedIds = noteIds.slice(0, 6);
+      const results: string[] = [];
+
+      // 并行抓取所有笔记
+      await Promise.allSettled(
+        limitedIds.map(async (noteId, idx) => {
+          try {
+            const noteUrl = `https://www.xiaohongshu.com/discovery/item/${noteId}`;
+            const noteHTML = await fetchHTML(noteUrl);
+            const noteData = parseNoteFromHTML(noteHTML);
+            if (noteData && (noteData.content || noteData.title)) {
+              results.push(buildNoteMaterial({ ...noteData, index: idx + 1 }));
+            }
+          } catch { /* 忽略单个笔记的错误 */ }
+        })
+      );
+
+      if (results.length === 0) {
+        return NextResponse.json({
+          error: '未能抓取到任何笔记内容',
+          hint: '小红书有反爬限制，批量抓取可能失败。建议直接复制笔记正文粘贴到素材框中。',
+        }, { status: 422 });
+      }
+
+      const materialText = results.join('\n\n' + '─'.repeat(30) + '\n\n');
+
       return NextResponse.json({
-        error: '未能解析笔记内容',
-        hint: '小红书可能需要登录才能查看完整内容。请复制笔记正文粘贴到素材框中，或分享另一篇笔记链接',
-      }, { status: 422 });
+        success: true,
+        type: 'profile',
+        url,
+        userId,
+        noteCount: results.length,
+        data: { notes: results },
+        material: materialText,
+        hint: `已从主页提取 ${results.length} 篇笔记内容，自动填入下方素材框`,
+      });
+    } catch (err) {
+      console.error('XHS profile scrape error:', err);
+      return NextResponse.json({
+        error: '主页抓取失败',
+        hint: '小红书有反爬机制，建议直接复制笔记正文粘贴到素材框中',
+      }, { status: 500 });
     }
+  }
 
+  // ── 处理笔记详情页链接 ──
+  if (url.includes('/discovery/item/')) {
+    try {
+      const html = await fetchHTML(url);
+      const noteData = parseNoteFromHTML(html);
+
+      if (!noteData || (!noteData.content && !noteData.title)) {
+        return NextResponse.json({
+          error: '未能解析笔记内容',
+          hint: '这篇笔记可能需要登录才能查看。请直接复制正文粘贴到素材框中。',
+        }, { status: 422 });
+      }
+
+      const materialText = [
+        noteData.title ? `标题：${noteData.title}` : '',
+        noteData.content ? `正文：\n${noteData.content}` : '',
+        noteData.author ? `作者：${noteData.author}` : '',
+        (noteData.likes || noteData.collected)
+          ? `互动：${[noteData.likes ? `获赞 ${noteData.likes}` : '', noteData.collects ? `收藏 ${noteData.collects}` : ''].filter(Boolean).join(' · ')}`
+          : '',
+      ].filter(Boolean).join('\n\n');
+
+      return NextResponse.json({
+        success: true,
+        type: 'note',
+        url,
+        data: {
+          title: noteData.title,
+          content: noteData.content,
+          author: noteData.author,
+          likes: noteData.likes,
+          collected: noteData.collected,
+        },
+        material: materialText,
+      });
+    } catch (err) {
+      console.error('XHS note scrape error:', err);
+      return NextResponse.json({
+        error: '抓取失败',
+        hint: '小红书有反爬限制。建议直接复制笔记正文粘贴到素材框中。',
+      }, { status: 500 });
+    }
+  }
+
+  // 短链接处理
+  if (url.includes('xhslink.com')) {
     return NextResponse.json({
-      success: true,
-      type: 'note',
-      url,
-      data: {
-        title: noteData.title,
-        content: noteData.content,
-        author: noteData.author,
-        likes: noteData.likes,
-        collected: noteData.collected,
-      },
-      // 合成完整素材文本
-      material: buildMaterialText(noteData),
-    });
-  } catch (err) {
-    console.error('XHS fetch error:', err);
-    return NextResponse.json({
-      error: '抓取失败',
-      hint: '小红书有反爬机制，付费笔记和登录可见内容无法抓取。请直接复制笔记正文粘贴到素材框中',
-    }, { status: 500 });
-  }
-}
-
-function buildMaterialText(data: {
-  title: string;
-  content: string;
-  author: string;
-  likes: string;
-  collected: string;
-}): string {
-  const parts: string[] = [];
-
-  if (data.title) {
-    parts.push(`【笔记标题】${data.title}`);
+      error: '短链接需要先在浏览器中打开',
+      hint: '请在微信或小红书App中打开短链接，然后复制详情页URL（包含 /discovery/item/ 或 /user/profile/）粘贴到这里',
+    }, { status: 400 });
   }
 
-  if (data.author) {
-    parts.push(`【作者】${data.author}`);
-  }
-
-  if (data.content) {
-    parts.push(`【正文内容】\n${data.content}`);
-  }
-
-  if (data.likes || data.collected) {
-    const stats: string[] = [];
-    if (data.likes) stats.push(`获赞 ${data.likes}`);
-    if (data.collected) stats.push(`收藏 ${data.collected}`);
-    parts.push(`【互动数据】${stats.join(' · ')}`);
-  }
-
-  parts.push('\n---');
-  parts.push('以上内容采集自小红书，可作为创作参考素材。');
-
-  return parts.join('\n\n');
+  return NextResponse.json({ error: '无法识别的链接格式' }, { status: 400 });
 }

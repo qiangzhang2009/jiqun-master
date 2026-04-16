@@ -38,6 +38,7 @@ function TranscriptStudio() {
   const [xhsUrl, setXhsUrl] = useState('');                // 小红书URL输入
   const [xhsScraping, setXhsScraping] = useState(false);   // 抓取中
   const [xhsError, setXhsError] = useState('');            // 抓取错误
+  const [xhsSuccess, setXhsSuccess] = useState('');       // 抓取成功提示
 
   // ── 步骤导航 ──
   const [currentStep, setCurrentStep] = useState<Step>('collect');
@@ -259,12 +260,24 @@ function TranscriptStudio() {
         setXhsError(data.hint || data.error || '抓取失败');
         return;
       }
-      // 将抓取到的内容填入素材
-      if (data.material) {
-        setSourceText(prev => prev + (prev ? '\n\n---\n\n' : '') + data.material);
-      }
+      // 自动将抓取内容填入素材框
+      const newMaterial = data.material || data.data?.content || '';
+      setSourceText(prev => {
+        const separator = prev.trim() ? '\n\n---\n\n' : '';
+        return prev + separator + newMaterial;
+      });
       setXhsUrl('');
       setXhsError('');
+      // 成功提示
+      if (data.type === 'profile' && data.noteCount) {
+        setXhsSuccess(`✓ 已从主页提取 ${data.noteCount} 篇笔记，自动填入素材框`);
+      } else {
+        setXhsSuccess('✓ 笔记内容已自动填入下方素材框');
+      }
+      setTimeout(() => setXhsSuccess(''), 5000);
+      // 滚动到素材输入框
+      const textarea = window.document.querySelector('textarea[placeholder*="粘贴法师"]') as HTMLTextAreaElement | null;
+      if (textarea) textarea.focus();
     } catch {
       setXhsError('网络错误，请检查网络连接后重试');
     } finally {
@@ -376,12 +389,13 @@ function TranscriptStudio() {
                   <div className="w-6 h-6 rounded bg-[#FF4D4F] flex items-center justify-center flex-shrink-0">
                     <span className="text-white text-xs font-bold">红</span>
                   </div>
-                  <h3 className="text-sm font-semibold">小红书笔记采集</h3>
+                  <h3 className="text-sm font-semibold">小红书内容采集</h3>
+                  <span className="text-xs text-[var(--text-muted)]">粘贴主页或笔记链接，一键提取</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 mb-3">
                   <input
                     className="zen-input flex-1"
-                    placeholder="粘贴小红书笔记链接（包含 /discovery/item/ 的URL）"
+                    placeholder="粘贴小红书主页链接（/user/profile/）或笔记链接（/discovery/item/）"
                     value={xhsUrl}
                     onChange={e => setXhsUrl(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleScrapeXHS()}
@@ -392,15 +406,30 @@ function TranscriptStudio() {
                     disabled={xhsScraping || !xhsUrl.trim()}
                   >
                     {xhsScraping ? (
-                      <><svg className="animate-spin-slow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8"/></svg>抓取中…</>
-                    ) : '抓取内容'}
+                      <><svg className="animate-spin-slow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8"/></svg>提取中…</>
+                    ) : '提取内容'}
                   </button>
                 </div>
-                {xhsError && (
-                  <p className="text-xs text-[var(--accent-warm)] mt-2">{xhsError}</p>
+
+                {/* 成功提示 */}
+                {xhsSuccess && (
+                  <div className="p-3 rounded-[var(--radius-sm)] bg-[var(--accent-primary)]/8 border border-[var(--accent-primary)]/20 mb-3">
+                    <p className="text-sm text-[var(--accent-primary)] font-medium">{xhsSuccess}</p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">内容已自动填入下方素材框，滚动查看</p>
+                  </div>
                 )}
-                <p className="text-xs text-[var(--text-muted)] mt-2">
-                  支持笔记详情页链接。付费内容和登录可见内容可能抓取失败，可直接复制正文粘贴。
+
+                {/* 错误提示 */}
+                {xhsError && (
+                  <div className="p-3 rounded-[var(--radius-sm)] bg-[var(--accent-warm)]/8 border border-[var(--accent-warm)]/20 mb-3">
+                    <p className="text-sm text-[var(--accent-warm)]">{xhsError}</p>
+                  </div>
+                )}
+
+                <p className="text-xs text-[var(--text-muted)]">
+                  <strong>支持两种链接：</strong>
+                  ① 用户主页（/user/profile/）— 自动提取多篇笔记
+                  ② 单篇笔记（/discovery/item/）— 提取单篇内容
                 </p>
               </div>
 
