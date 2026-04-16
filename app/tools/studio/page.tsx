@@ -5,16 +5,17 @@ import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 
 // ─── 步骤定义 ───
-type Step = 'collect' | 'translate' | 'titles' | 'tags' | 'poster' | 'check';
+type Step = 'collect' | 'translate' | 'titles' | 'tags' | 'poster' | 'check' | 'final';
 type OutputMode = 'light' | 'gold' | 'expand';
 
-const STEPS: { id: Step; label: string; icon: string }[] = [
-  { id: 'collect', label: '素材采集', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
-  { id: 'translate', label: 'AI转语', icon: 'M5 8l6 6M4 14l6-6 2-3M2 5h12M22 22l-5-10-5 10M14 18h6' },
-  { id: 'titles', label: '爆款标题', icon: 'M3 3h18M3 9h18M3 15h18M3 21h18' },
-  { id: 'tags', label: '智能标签', icon: 'M7 7h10M7 12h10M7 17h10' },
-  { id: 'poster', label: '封面图', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
-  { id: 'check', label: '合规检测', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4' },
+const STEPS: { id: Step; label: string }[] = [
+  { id: 'collect', label: '素材采集' },
+  { id: 'translate', label: 'AI转语' },
+  { id: 'titles', label: '爆款标题' },
+  { id: 'tags', label: '智能标签' },
+  { id: 'poster', label: '封面图' },
+  { id: 'check', label: '合规检测' },
+  { id: 'final', label: '生成终稿' },
 ];
 
 const STEP_ORDER = STEPS.map(s => s.id);
@@ -32,6 +33,11 @@ function TranscriptStudio() {
   const [posterQuote, setPosterQuote] = useState('');       // 封面金句
   const [checkResult, setCheckResult] = useState<{ score: number; issues: Array<{ word: string; replacement?: string }> } | null>(null);
   const [checkText, setCheckText] = useState('');           // 待检测文本
+  const [finalDraft, setFinalDraft] = useState('');          // 终稿
+  const [finalLoading, setFinalLoading] = useState(false);   // 终稿生成中
+  const [xhsUrl, setXhsUrl] = useState('');                // 小红书URL输入
+  const [xhsScraping, setXhsScraping] = useState(false);   // 抓取中
+  const [xhsError, setXhsError] = useState('');            // 抓取错误
 
   // ── 步骤导航 ──
   const [currentStep, setCurrentStep] = useState<Step>('collect');
@@ -155,6 +161,7 @@ function TranscriptStudio() {
     if (prevStep === 'tags') return selectedTitle.trim().length > 0 || translatedText.trim().length > 0;
     if (prevStep === 'poster') return selectedTitle.trim().length > 0 || translatedText.trim().length > 0;
     if (prevStep === 'check') return true;
+    if (prevStep === 'final') return checkResult !== null;
     return false;
   };
 
@@ -220,7 +227,7 @@ function TranscriptStudio() {
     if (!textToCheck.trim()) return;
     setCheckLoading(true);
 
-    import('@/lib/rules/prohibited-words').then(({ prohibitedWords, categories }) => {
+    import('@/lib/rules/prohibited-words').then(({ categories }) => {
       const lower = textToCheck.toLowerCase();
       const issues: Array<{ word: string; replacement?: string }> = [];
       for (const category of categories) {
@@ -236,6 +243,62 @@ function TranscriptStudio() {
     });
   }, [checkText, selectedTitle, translatedText]);
 
+  // ── 小红书URL抓取 ──
+  const handleScrapeXHS = async () => {
+    if (!xhsUrl.trim()) return;
+    setXhsScraping(true);
+    setXhsError('');
+    try {
+      const res = await fetch('/api/xhs/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: xhsUrl }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setXhsError(data.hint || data.error || '抓取失败');
+        return;
+      }
+      // 将抓取到的内容填入素材
+      if (data.material) {
+        setSourceText(prev => prev + (prev ? '\n\n---\n\n' : '') + data.material);
+      }
+      setXhsUrl('');
+      setXhsError('');
+    } catch {
+      setXhsError('网络错误，请检查网络连接后重试');
+    } finally {
+      setXhsScraping(false);
+    }
+  };
+
+  // ── 生成终稿 ──
+  const handleGenerateFinal = async () => {
+    if (!selectedTitle && !translatedText) return;
+    setFinalLoading(true);
+    try {
+      const res = await fetch('/api/ai/final-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: selectedTitle, body: translatedText, tags, posterQuote: posterQuote || selectedTitle }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setXhsError(data.error); // 复用xhsError显示
+        return;
+      }
+      if (data.result) {
+        setFinalDraft(data.result);
+        const nextIdx = STEP_ORDER.indexOf('final') + 1;
+        if (nextIdx < STEP_ORDER.length) goToStep(STEP_ORDER[nextIdx]);
+      }
+    } catch {
+      setXhsError('生成失败，请稍后重试');
+    } finally {
+      setFinalLoading(false);
+    }
+  };
+
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   // ── 步骤进度计算 ──
@@ -246,6 +309,7 @@ function TranscriptStudio() {
   if (tags.length > 0) completedSteps.push('tags');
   if (posterQuote.trim()) completedSteps.push('poster');
   if (checkResult && checkResult.issues.length === 0) completedSteps.push('check');
+  if (finalDraft.trim()) completedSteps.push('final');
 
   return (
     <>
@@ -306,9 +370,43 @@ function TranscriptStudio() {
           {/* ── 步骤1：素材采集 ── */}
           {currentStep === 'collect' && (
             <div className="animate-fade-in space-y-6">
+              {/* 小红书URL采集 */}
+              <div className="zen-card p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-6 h-6 rounded bg-[#FF4D4F] flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-xs font-bold">红</span>
+                  </div>
+                  <h3 className="text-sm font-semibold">小红书笔记采集</h3>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    className="zen-input flex-1"
+                    placeholder="粘贴小红书笔记链接（包含 /discovery/item/ 的URL）"
+                    value={xhsUrl}
+                    onChange={e => setXhsUrl(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleScrapeXHS()}
+                  />
+                  <button
+                    className="zen-btn zen-btn-primary flex-shrink-0"
+                    onClick={handleScrapeXHS}
+                    disabled={xhsScraping || !xhsUrl.trim()}
+                  >
+                    {xhsScraping ? (
+                      <><svg className="animate-spin-slow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8"/></svg>抓取中…</>
+                    ) : '抓取内容'}
+                  </button>
+                </div>
+                {xhsError && (
+                  <p className="text-xs text-[var(--accent-warm)] mt-2">{xhsError}</p>
+                )}
+                <p className="text-xs text-[var(--text-muted)] mt-2">
+                  支持笔记详情页链接。付费内容和登录可见内容可能抓取失败，可直接复制正文粘贴。
+                </p>
+              </div>
+
               <div className="zen-card p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-serif text-lg font-semibold">素材来源</h2>
+                  <h2 className="font-serif text-lg font-semibold">素材输入</h2>
                   <div className="flex items-center gap-3">
                     {recording === 'recording' && (
                       <div className="flex items-center gap-2 text-[var(--accent-red)]">
@@ -340,7 +438,7 @@ function TranscriptStudio() {
 
                 <textarea
                   className="zen-textarea h-52"
-                  placeholder="粘贴法师讲座原文、禅修记录、读书笔记，或使用上方录音功能实时转写……"
+                  placeholder={"粘贴法师讲座原文、禅修记录、读书笔记，或使用上方录音功能实时转写……\n\n抓取的笔记内容也会自动填入此处"}
                   value={sourceText}
                   onChange={e => setSourceText(e.target.value)}
                 />
@@ -659,11 +757,23 @@ function TranscriptStudio() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-8">
-                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.5" className="mx-auto">
+                    <div className="text-center py-6">
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.5" className="mx-auto">
                         <polyline points="20 6 9 17 4 12"/>
                       </svg>
                       <p className="mt-3 text-[var(--accent-primary)] font-medium">内容合规，可以发布！</p>
+                      {/* 一键生成终稿 */}
+                      <button
+                        className="mt-4 zen-btn zen-btn-primary"
+                        onClick={handleGenerateFinal}
+                        disabled={finalLoading || (!selectedTitle && !translatedText)}
+                      >
+                        {finalLoading ? (
+                          <><svg className="animate-spin-slow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="8"/></svg>生成中…</>
+                        ) : (
+                          <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.853 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.853 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.853 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.853 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>✨ 一键生成可发布终稿</>
+                        )}
+                      </button>
                     </div>
                   )}
                 </div>
@@ -688,6 +798,98 @@ function TranscriptStudio() {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── 步骤7：终稿生成 ── */}
+          {currentStep === 'final' && finalDraft && (
+            <div className="animate-fade-in space-y-6">
+              <div className="zen-card p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-[var(--accent-primary)] text-white text-xs flex items-center justify-center">✓</span>
+                    <h2 className="font-serif text-lg font-semibold">终稿已生成</h2>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="zen-btn zen-btn-ghost text-xs"
+                      onClick={() => {
+                        navigator.clipboard.writeText(finalDraft);
+                      }}
+                    >
+                      复制全文
+                    </button>
+                    <button
+                      className="zen-btn zen-btn-ghost text-xs"
+                      onClick={() => { setFinalDraft(''); }}
+                    >
+                      重新生成
+                    </button>
+                  </div>
+                </div>
+                <div className="zen-prose whitespace-pre-wrap text-sm leading-relaxed bg-[var(--bg-secondary)] p-5 rounded-[var(--radius-sm)]">
+                  {finalDraft}
+                </div>
+                <div className="mt-5 p-4 rounded-[var(--radius-sm)] bg-[var(--accent-primary)]/5 border border-[var(--accent-primary)]/20">
+                  <p className="text-sm font-medium text-[var(--accent-primary)] mb-1">✓ 复制即可发布</p>
+                  <p className="text-xs text-[var(--text-muted)]">终稿已整合标题、正文、标签、封面文字建议。直接复制全文粘贴到小红书发布即可。</p>
+                </div>
+              </div>
+
+              {/* 快速操作区 */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <a
+                  href="/tools/poster"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="zen-card p-5 flex items-center gap-4 hover:border-[var(--accent-primary)]/40 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--text-secondary)]/10 flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">生成封面图</p>
+                    <p className="text-xs text-[var(--text-muted)]">前往墨境，用终稿中的封面文字生成精美封面</p>
+                  </div>
+                </a>
+                <a
+                  href="/tools/calendar"
+                  className="zen-card p-5 flex items-center gap-4 hover:border-[var(--accent-primary)]/40 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--accent-primary)]/10 flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.5" strokeLinecap="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">加入发布日历</p>
+                    <p className="text-xs text-[var(--text-muted)]">排入下周发布计划，保持稳定的发布节奏</p>
+                  </div>
+                </a>
+              </div>
+
+              {/* 从头开始新一篇 */}
+              <div className="text-center pt-4 border-t border-[var(--border-light)]">
+                <button
+                  className="text-sm text-[var(--text-muted)] hover:text-[var(--accent-primary)] transition-colors"
+                  onClick={() => {
+                    setSourceText('');
+                    setTranslatedText('');
+                    setTitles([]);
+                    setSelectedTitle('');
+                    setTags([]);
+                    setPosterQuote('');
+                    setCheckResult(null);
+                    setCheckText('');
+                    setFinalDraft('');
+                    goToStep('collect');
+                  }}
+                >
+                  ← 从头开始创作新一篇
+                </button>
               </div>
             </div>
           )}
