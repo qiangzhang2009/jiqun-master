@@ -6,9 +6,8 @@ import { useState } from 'react';
 
 const navLinks = [
   { href: '/tools', label: '工具站' },
-  { href: '/tools/check', label: '净言' },
-  { href: '/tools/title', label: '钩子' },
-  { href: '/tools/poster', label: '墨境' },
+  { href: '/tools/studio', label: '创作工作台' },
+  { href: '/tools/translate', label: '转语' },
   { href: '/tools/diagnose', label: '观己' },
 ];
 
@@ -58,7 +57,7 @@ export default function Navbar() {
 
         {/* CTA */}
         <div className="flex items-center gap-3">
-          <Link href="/tools" className="zen-btn zen-btn-primary text-sm py-2 px-5 hidden sm:flex">
+          <Link href="/tools/studio" className="zen-btn zen-btn-primary text-sm py-2 px-5 hidden sm:flex">
             开始使用
           </Link>
           {/* Mobile toggle */}

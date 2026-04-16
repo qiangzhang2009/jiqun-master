@@ -4,6 +4,22 @@ import Link from 'next/link';
 
 const modules = [
   {
+    id: 'studio',
+    name: '创作工作台',
+    sub: '一站式创作',
+    desc: '从素材采集到封面图，6步完成禅修内容创作全流程。录音转文字、AI翻译、爆款标题、智能标签、封面图、合规检测，串联所有工具。',
+    href: '/tools/studio',
+    tag: 'AI · 新功能',
+    tagColor: 'var(--accent-warm)',
+    color: 'var(--accent-primary)',
+    hero: true,
+    icon: (
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+      </svg>
+    ),
+  },
+  {
     id: 'check',
     name: '净言',
     sub: '合规检测',
@@ -139,7 +155,9 @@ export default function ToolsPage() {
               <Link
                 key={m.id}
                 href={m.href}
-                className={`module-card zen-card p-7 group animate-fade-in-up stagger-${i + 1}`}
+                className={`module-card zen-card p-7 group animate-fade-in-up stagger-${i + 1} ${
+                  m.hero ? 'border-[var(--accent-warm)]/30 bg-gradient-to-br from-[var(--accent-primary)]/5 to-transparent sm:col-span-2 lg:col-span-3' : ''
+                }`}
               >
                 <div className="flex items-start justify-between mb-5">
                   <div
